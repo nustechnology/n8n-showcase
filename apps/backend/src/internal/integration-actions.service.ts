@@ -278,7 +278,7 @@ export class IntegrationActionsService {
       throw new NotFoundException(`Mailer provider "${mailer.provider}" cannot send email`);
     }
 
-    const from = (config.from as string | undefined) ?? 'noreply@automation-experience.com';
+    const from = (config.from as string | undefined) ?? 'noreply@n8n-showcase.com';
     const orderName = payload.name ?? `#${order.shopifyOrderId}`;
 
     await this.circuitBreaker.fire(mailer.provider, () =>
