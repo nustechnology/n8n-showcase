@@ -1,0 +1,437 @@
+// Tenant isolation is application-level only (no database-level RLS): every
+// tenant-scoped query is expected to filter by `tenantId` explicitly. See
+// PrismaService in src/prisma for the single DB connection this app uses.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ---------------------------------------------------------------------------
+// Enums
+// ---------------------------------------------------------------------------
+
+enum TenantPlan {
+  TRIAL
+  STARTER
+  GROWTH
+  ENTERPRISE
+}
+
+enum TenantStatus {
+  PENDING
+  ACTIVE
+  SUSPENDED
+  CANCELED
+}
+
+enum MembershipStatus {
+  INVITED
+  ACTIVE
+  SUSPENDED
+  REMOVED
+}
+
+enum IntegrationProvider {
+  SHOPIFY
+  ZOHO_INVENTORY
+  ODOO
+  EASYPOST
+  SHIPPO
+  RESEND
+  SENDGRID
+  MAILGUN
+  SLACK
+  DISCORD
+  OPENAI
+}
+
+enum IntegrationStatus {
+  DISCONNECTED
+  CONNECTING
+  ACTIVE
+  DEGRADED
+  ERROR
+}
+
+enum WebhookSource {
+  SHOPIFY
+  CLERK
+  SLACK
+  N8N
+}
+
+enum WebhookProcessingStatus {
+  RECEIVED
+  PROCESSING
+  PROCESSED
+  FAILED
+}
+
+enum OrderStatus {
+  RECEIVED
+  VALIDATING
+  VALIDATED
+  VALIDATION_FAILED
+  INVENTORY_CHECKED
+  SHIPMENT_CREATED
+  FULFILLED
+  NOTIFIED
+  COMPLETED
+  FAILED
+  CANCELED
+}
+
+enum WorkflowRunStatus {
+  PENDING
+  RUNNING
+  SUCCEEDED
+  FAILED
+  CANCELED
+}
+
+enum WorkflowStepStatus {
+  PENDING
+  RUNNING
+  SUCCEEDED
+  FAILED
+  SKIPPED
+}
+
+// ---------------------------------------------------------------------------
+// Tenant, identity, RBAC
+// ---------------------------------------------------------------------------
+
+model Tenant {
+  id         String       @id @default(cuid())
+  clerkOrgId String       @unique @map("clerk_org_id")
+  slug       String       @unique
+  name       String
+  plan       TenantPlan   @default(TRIAL)
+  status     TenantStatus @default(ACTIVE)
+  settings   Json         @default("{}")
+  createdAt  DateTime     @default(now()) @map("created_at")
+  updatedAt  DateTime     @updatedAt @map("updated_at")
+
+  memberships      TenantMembership[]
+  roles            Role[]
+  integrations     Integration[]
+  webhookEvents    WebhookInboundEvent[]
+  orders           Order[]
+  orderEvents      OrderEvent[]
+  workflowRuns     WorkflowRun[]
+  workflowRunSteps WorkflowRunStep[]
+  notifications    Notification[]
+  auditLogs        AuditLog[]
+
+  @@map("tenants")
+}
+
+model User {
+  id          String   @id @default(cuid())
+  clerkUserId String   @unique @map("clerk_user_id")
+  email       String   @unique
+  name        String?
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  memberships     TenantMembership[] @relation("MembershipUser")
+  sentInvitations TenantMembership[] @relation("MembershipInvitedBy")
+  auditLogs       AuditLog[]
+  notifications   Notification[]
+
+  @@map("users")
+}
+
+model TenantMembership {
+  id              String           @id @default(cuid())
+  tenantId        String           @map("tenant_id")
+  userId          String           @map("user_id")
+  roleId          String           @map("role_id")
+  status          MembershipStatus @default(INVITED)
+  invitedByUserId String?          @map("invited_by_user_id")
+  joinedAt        DateTime?        @map("joined_at")
+  createdAt       DateTime         @default(now()) @map("created_at")
+  updatedAt       DateTime         @updatedAt @map("updated_at")
+
+  tenant    Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  user      User   @relation("MembershipUser", fields: [userId], references: [id], onDelete: Cascade)
+  role      Role   @relation(fields: [roleId], references: [id], onDelete: Restrict)
+  invitedBy User?  @relation("MembershipInvitedBy", fields: [invitedByUserId], references: [id], onDelete: SetNull)
+
+  @@unique([tenantId, userId])
+  @@index([tenantId])
+  @@index([userId])
+  @@map("tenant_memberships")
+}
+
+model Role {
+  id          String   @id @default(cuid())
+  tenantId    String?  @map("tenant_id")
+  name        String
+  description String?
+  isSystem    Boolean  @default(false) @map("is_system")
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  tenant          Tenant?            @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  memberships     TenantMembership[]
+  rolePermissions RolePermission[]
+
+  @@unique([tenantId, name])
+  @@index([tenantId])
+  @@map("roles")
+}
+
+model Permission {
+  id          String  @id @default(cuid())
+  key         String  @unique
+  description String?
+
+  rolePermissions RolePermission[]
+
+  @@map("permissions")
+}
+
+model RolePermission {
+  roleId       String @map("role_id")
+  permissionId String @map("permission_id")
+
+  role       Role       @relation(fields: [roleId], references: [id], onDelete: Cascade)
+  permission Permission @relation(fields: [permissionId], references: [id], onDelete: Cascade)
+
+  @@id([roleId, permissionId])
+  @@map("role_permissions")
+}
+
+// ---------------------------------------------------------------------------
+// Integrations & credentials
+// ---------------------------------------------------------------------------
+
+model Integration {
+  id                  String              @id @default(cuid())
+  tenantId            String              @map("tenant_id")
+  provider            IntegrationProvider
+  status              IntegrationStatus   @default(DISCONNECTED)
+  config              Json                @default("{}")
+  lastCheckedAt       DateTime?           @map("last_checked_at")
+  lastErrorMessage    String?             @map("last_error_message")
+  // OAuth CSRF state for the connect->callback round trip (Shopify today).
+  // Dedicated + unique columns rather than stashing this in `config` — the
+  // callback resolves tenant purely from this value (no Clerk session is
+  // present on a provider's OAuth redirect), so it needs a real uniqueness
+  // guarantee and an indexed lookup, not an unindexed JSON scan. Nulled out
+  // once the flow completes, so a replayed hit on the callback URL can't
+  // re-run the exchange against an already-active integration.
+  oauthState          String?             @unique @map("oauth_state")
+  oauthStateExpiresAt DateTime?           @map("oauth_state_expires_at")
+  createdAt           DateTime            @default(now()) @map("created_at")
+  updatedAt           DateTime            @updatedAt @map("updated_at")
+
+  tenant     Tenant                 @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  credential IntegrationCredential?
+
+  @@unique([tenantId, provider])
+  @@index([tenantId])
+  @@map("integrations")
+}
+
+// Deliberately its own table: non-secret integration config can be queried,
+// joined and logged freely without any code path touching the ciphertext.
+model IntegrationCredential {
+  id            String    @id @default(cuid())
+  integrationId String    @unique @map("integration_id")
+  ciphertext    String
+  iv            String
+  authTag       String    @map("auth_tag")
+  keyVersion    Int       @default(1) @map("key_version")
+  // Written once at credential-set time (e.g. "sk_live_••••1234"); never
+  // derived by decrypting on read, so a display-only endpoint never touches
+  // the ciphertext at all.
+  displayHint   String?   @map("display_hint")
+  rotatedAt     DateTime? @map("rotated_at")
+  createdAt     DateTime  @default(now()) @map("created_at")
+  updatedAt     DateTime  @updatedAt @map("updated_at")
+
+  integration Integration @relation(fields: [integrationId], references: [id], onDelete: Cascade)
+
+  @@map("integration_credentials")
+}
+
+// ---------------------------------------------------------------------------
+// Webhooks
+// ---------------------------------------------------------------------------
+
+model WebhookInboundEvent {
+  id             String                  @id @default(cuid())
+  tenantId       String?                 @map("tenant_id")
+  source         WebhookSource
+  externalId     String                  @map("external_id")
+  payload        Json
+  headers        Json
+  signatureValid Boolean                 @default(false) @map("signature_valid")
+  status         WebhookProcessingStatus @default(RECEIVED)
+  receivedAt     DateTime                @default(now()) @map("received_at")
+  processedAt    DateTime?               @map("processed_at")
+
+  tenant Tenant? @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@unique([source, externalId])
+  @@index([tenantId])
+  @@index([status])
+  @@map("webhooks_inbound")
+}
+
+// ---------------------------------------------------------------------------
+// Orders & workflow execution
+// ---------------------------------------------------------------------------
+
+model Order {
+  id             String      @id @default(cuid())
+  tenantId       String      @map("tenant_id")
+  shopifyOrderId String      @map("shopify_order_id")
+  status         OrderStatus @default(RECEIVED)
+  customerEmail  String?     @map("customer_email")
+  customerName   String?     @map("customer_name")
+  currency       String?
+  totalAmount    Decimal?    @map("total_amount") @db.Decimal(12, 2)
+  rawPayload     Json        @map("raw_payload")
+  createdAt      DateTime    @default(now()) @map("created_at")
+  updatedAt      DateTime    @updatedAt @map("updated_at")
+
+  tenant       Tenant        @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  events       OrderEvent[]
+  workflowRuns WorkflowRun[]
+
+  @@unique([tenantId, shopifyOrderId])
+  @@index([tenantId, status])
+  @@map("orders")
+}
+
+// Append-only; this is the per-order timeline rendered in the dashboard.
+model OrderEvent {
+  id        String   @id @default(cuid())
+  orderId   String   @map("order_id")
+  tenantId  String   @map("tenant_id")
+  eventType String   @map("event_type")
+  actor     String?
+  payload   Json?
+  createdAt DateTime @default(now()) @map("created_at")
+
+  order  Order  @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@index([orderId])
+  @@index([tenantId])
+  @@map("order_events")
+}
+
+model WorkflowRun {
+  id             String            @id @default(cuid())
+  tenantId       String            @map("tenant_id")
+  orderId        String?           @map("order_id")
+  n8nExecutionId String?           @unique @map("n8n_execution_id")
+  // Set by the orchestrator (n8n) at run-creation time from a value the
+  // backend already generated for its own order-processing logs — carried
+  // through unchanged so one order's activity can be traced across both
+  // repos, independent of n8n's own execution id.
+  correlationId  String?           @map("correlation_id")
+  workflowName   String            @map("workflow_name")
+  status         WorkflowRunStatus @default(PENDING)
+  error          Json?
+  startedAt      DateTime          @default(now()) @map("started_at")
+  finishedAt     DateTime?         @map("finished_at")
+
+  tenant Tenant            @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  order  Order?            @relation(fields: [orderId], references: [id], onDelete: SetNull)
+  steps  WorkflowRunStep[]
+
+  @@index([tenantId])
+  @@index([orderId])
+  @@map("workflow_runs")
+}
+
+// One row per named step of a run (e.g. "validate_order", "check_inventory",
+// "create_shipment"), addressable on its own so a single failed step can be
+// retried without re-running the whole workflow. Mutable current-state
+// projection for the stepper UI — order_events remains the append-only
+// audit trail; this table is not it.
+model WorkflowRunStep {
+  id            String             @id @default(cuid())
+  tenantId      String             @map("tenant_id")
+  workflowRunId String             @map("workflow_run_id")
+  stepKey       String             @map("step_key")
+  label         String
+  sequence      Int
+  status        WorkflowStepStatus @default(PENDING)
+  attempt       Int                @default(1)
+  retryable     Boolean            @default(true)
+  error         Json?
+  startedAt     DateTime?          @map("started_at")
+  finishedAt    DateTime?          @map("finished_at")
+  createdAt     DateTime           @default(now()) @map("created_at")
+  updatedAt     DateTime           @updatedAt @map("updated_at")
+
+  tenant      Tenant      @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  workflowRun WorkflowRun @relation(fields: [workflowRunId], references: [id], onDelete: Cascade)
+
+  @@unique([workflowRunId, stepKey])
+  @@index([tenantId])
+  @@index([workflowRunId, sequence])
+  @@map("workflow_run_steps")
+}
+
+// ---------------------------------------------------------------------------
+// Notifications
+// ---------------------------------------------------------------------------
+
+// Backs the frontend's notifications center. `type` stays a free-form string
+// (e.g. "workflow_failed", "integration_degraded") rather than an enum, same
+// reasoning as OrderEvent.eventType — new notification kinds shouldn't need
+// a migration. Both tenant isolation and recipient scoping (a user only
+// sees their own notifications) are enforced at the application query
+// layer — see the header comment on this file.
+model Notification {
+  id        String    @id @default(cuid())
+  tenantId  String    @map("tenant_id")
+  userId    String    @map("user_id")
+  type      String
+  title     String
+  body      String?
+  payload   Json?
+  readAt    DateTime? @map("read_at")
+  createdAt DateTime  @default(now()) @map("created_at")
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId])
+  @@index([userId, readAt])
+  @@map("notifications")
+}
+
+// ---------------------------------------------------------------------------
+// Audit
+// ---------------------------------------------------------------------------
+
+model AuditLog {
+  id           String   @id @default(cuid())
+  tenantId     String   @map("tenant_id")
+  userId       String?  @map("user_id")
+  action       String
+  resourceType String   @map("resource_type")
+  resourceId   String?  @map("resource_id")
+  metadata     Json?
+  ipAddress    String?  @map("ip_address")
+  createdAt    DateTime @default(now()) @map("created_at")
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  user   User?  @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([tenantId, createdAt])
+  @@map("audit_logs")
+}

@@ -1,0 +1,116 @@
+import {
+  BadRequestException,
+  Controller,
+  Logger,
+  Post,
+  RawBodyRequest,
+  Req,
+} from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
+
+import { Request } from 'express';
+import { Webhook } from 'svix';
+
+import { Prisma } from '@prisma/client';
+import { PrismaService } from '../prisma/prisma.service';
+
+import { Public } from '../common/decorators/public.decorator';
+
+import { ClerkWebhookEvent } from './clerk-webhook-event.types';
+import { ClerkWebhookService } from './clerk-webhook.service';
+
+@Public()
+@Controller('webhooks/clerk')
+export class ClerkWebhookController {
+  private readonly logger = new Logger(ClerkWebhookController.name);
+  private readonly secret: string;
+
+  constructor(
+    config: ConfigService,
+    private readonly prisma: PrismaService,
+    private readonly clerkWebhooks: ClerkWebhookService,
+  ) {
+    this.secret = config.getOrThrow<string>('CLERK_WEBHOOK_SECRET');
+  }
+
+  @Post()
+  async handle(@Req() req: RawBodyRequest<Request>): Promise<{ received: true }> {
+    if (!req.rawBody) {
+      throw new BadRequestException('Missing request body');
+    }
+
+    const svixId = req.headers['svix-id'];
+    const svixTimestamp = req.headers['svix-timestamp'];
+    const svixSignature = req.headers['svix-signature'];
+    if (
+      typeof svixId !== 'string' ||
+      typeof svixTimestamp !== 'string' ||
+      typeof svixSignature !== 'string'
+    ) {
+      throw new BadRequestException('Missing Svix signature headers');
+    }
+
+    let event: ClerkWebhookEvent;
+    try {
+      event = new Webhook(this.secret).verify(req.rawBody, {
+        'svix-id': svixId,
+        'svix-timestamp': svixTimestamp,
+        'svix-signature': svixSignature,
+      }) as ClerkWebhookEvent;
+    } catch {
+      throw new BadRequestException('Invalid webhook signature');
+    }
+
+    // Svix redelivers on a non-2xx response, and can occasionally redeliver
+    // an already-succeeded event too — svix-id is the dedupe key. A prior
+    // FAILED row is the one exception that must NOT be deduped away: a
+    // manual "Resend" from Clerk's dashboard reuses the same svix-id, and
+    // that resend is exactly how a failed webhook gets recovered — so it
+    // has to be allowed to actually reprocess, not silently swallowed
+    // forever because a row already exists.
+    const existing = await this.prisma.webhookInboundEvent.findUnique({
+      where: { source_externalId: { source: 'CLERK', externalId: svixId } },
+    });
+    if (existing && existing.status !== 'FAILED') {
+      return { received: true };
+    }
+
+    await this.prisma.webhookInboundEvent.upsert({
+      where: { source_externalId: { source: 'CLERK', externalId: svixId } },
+      create: {
+        source: 'CLERK',
+        externalId: svixId,
+        payload: event as unknown as Prisma.InputJsonValue,
+        headers: { 'svix-id': svixId, 'svix-timestamp': svixTimestamp } as Prisma.InputJsonValue,
+        signatureValid: true,
+        status: 'PROCESSING',
+      },
+      update: {
+        payload: event as unknown as Prisma.InputJsonValue,
+        headers: { 'svix-id': svixId, 'svix-timestamp': svixTimestamp } as Prisma.InputJsonValue,
+        status: 'PROCESSING',
+        processedAt: null,
+      },
+    });
+
+    try {
+      await this.clerkWebhooks.handle(event);
+      await this.prisma.webhookInboundEvent.update({
+        where: { source_externalId: { source: 'CLERK', externalId: svixId } },
+        data: { status: 'PROCESSED', processedAt: new Date() },
+      });
+    } catch (error) {
+      // Still ack with 200 below — the failure is our bug to fix, not
+      // something a Svix retry would resolve, and we don't want Clerk
+      // redelivering the same event indefinitely. The FAILED row is the
+      // trail for following up.
+      this.logger.error(`Failed to process Clerk webhook "${event.type}"`, error as Error);
+      await this.prisma.webhookInboundEvent.update({
+        where: { source_externalId: { source: 'CLERK', externalId: svixId } },
+        data: { status: 'FAILED' },
+      });
+    }
+
+    return { received: true };
+  }
+}
