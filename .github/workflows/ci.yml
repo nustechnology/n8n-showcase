@@ -42,7 +42,7 @@ jobs:
       postgres:
         image: postgres:16-alpine
         env:
-          POSTGRES_USER: aec
+          POSTGRES_USER: n8n-showcase
           POSTGRES_PASSWORD: postgres
           POSTGRES_DB: postgres
         ports:
@@ -63,7 +63,7 @@ jobs:
       - run: npx turbo prisma:generate
       - run: npx turbo test
         env:
-          DATABASE_URL: postgresql://aec:postgres@localhost:5432/postgres
+          DATABASE_URL: postgresql://n8n-showcase:postgres@localhost:5432/postgres
 
   build:
     name: Build

@@ -69,7 +69,7 @@ as the base URL instead of `host.docker.internal` (the old approach when
 the backend ran as a host process). Verify connectivity:
 
 ```bash
-docker exec aec-n8n wget -qO- http://backend:3000/health
+docker exec n8n-showcase-n8n wget -qO- http://backend:3000/health
 ```
 
 ## Workflow pipeline

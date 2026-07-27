@@ -19,8 +19,8 @@ npm install
 One Postgres role, full privileges on the schema:
 
 ```sql
-CREATE ROLE aec LOGIN PASSWORD 'pick-a-password';
-GRANT ALL ON SCHEMA public TO aec;
+CREATE ROLE n8n-showcase LOGIN PASSWORD 'pick-a-password';
+GRANT ALL ON SCHEMA public TO n8n-showcase;
 ```
 
 ## 3. Configure environment
@@ -30,7 +30,7 @@ cp .env.example .env
 ```
 
 Fill in:
-- `DATABASE_URL` — connection string using `aec`
+- `DATABASE_URL` — connection string using `n8n-showcase`
 - `CLERK_ISSUER` — your Clerk instance's frontend API origin (Clerk dashboard → API Keys). The app fetches `${CLERK_ISSUER}/.well-known/jwks.json` and verifies every request's session token against it — this is why the app fails fast at boot without it.
 - `CLERK_WEBHOOK_SECRET` — from Clerk dashboard → Webhooks → your endpoint → Signing Secret (`whsec_...`). Also fails the app at boot if missing, same as `CLERK_ISSUER`. You'll need a webhook endpoint registered in Clerk pointing at `POST /webhooks/clerk` on a URL Clerk can reach (a tunnel like `ngrok`/Clerk's own CLI forwarding for local dev) — subscribed to `organization.*`, `user.*`, and `organizationMembership.*` events.
 - `CREDENTIALS_ENCRYPTION_KEY` — 32 bytes, base64: `openssl rand -base64 32`. Also fails the app at boot if missing or the wrong length after decoding.
@@ -174,5 +174,5 @@ Migrations haven't been applied to whatever database `DATABASE_URL` points at ye
 **`400 Bad Request` ("Invalid webhook signature") from `POST /webhooks/clerk`**
 Either `CLERK_WEBHOOK_SECRET` doesn't match the signing secret for that specific endpoint in the Clerk dashboard (each endpoint has its own), or something between Clerk and this app re-serialized the request body — Svix signs the exact raw bytes, so any proxy that re-encodes JSON in transit breaks verification.
 
-**`role "aec" does not exist` while migrating**
+**`role "n8n-showcase" does not exist` while migrating**
 The database role (step 2) doesn't exist yet, or was dropped along with a recreated schema (`DROP SCHEMA public CASCADE` also drops that role's grants — re-run the `GRANT` from step 2 after recreating the schema).
