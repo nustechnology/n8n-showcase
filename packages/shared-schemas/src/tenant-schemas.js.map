@@ -1,1 +1,0 @@
-{"version":3,"file":"tenant-schemas.js","sourceRoot":"","sources":["tenant-schemas.ts"],"names":[],"mappings":";;;AAAA,6BAAwB;AAEX,QAAA,kBAAkB,GAAG,OAAC,CAAC,MAAM,CAAC;IACzC,IAAI,EAAE,OAAC,CAAC,MAAM,EAAE,CAAC,IAAI,EAAE,CAAC,GAAG,CAAC,CAAC,EAAE,wBAAwB,CAAC,CAAC,GAAG,CAAC,GAAG,EAAE,kBAAkB,CAAC;CACtF,CAAC,CAAC"}
