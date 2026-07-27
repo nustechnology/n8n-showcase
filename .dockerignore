@@ -1,0 +1,13 @@
+node_modules/
+.git/
+.turbo/
+.next/
+.env
+.env.local
+*.md
+CLAUDE.md
+AGENTS.md
+.idea/
+.claude/
+apps/*/.env
+apps/*/.env.local

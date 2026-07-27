@@ -12,7 +12,15 @@
     "lint": "turbo lint",
     "typecheck": "turbo typecheck",
     "test": "turbo test",
-    "codegen:api": "turbo codegen:api"
+    "codegen:api": "turbo codegen:api",
+    "docker:build": "docker compose build",
+    "docker:up": "docker compose up -d",
+    "docker:down": "docker compose down",
+    "docker:logs": "docker compose logs -f",
+    "db:migrate:deploy": "turbo prisma:migrate:deploy",
+    "db:seed": "turbo prisma:seed",
+    "db:generate": "turbo prisma:generate",
+    "format": "prettier --write \"**/*.{ts,tsx,json,md}\" --ignore-path .gitignore"
   },
   "devDependencies": {
     "turbo": "^2.10.6"
