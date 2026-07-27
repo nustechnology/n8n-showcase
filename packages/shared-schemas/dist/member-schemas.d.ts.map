@@ -1,0 +1,1 @@
+{"version":3,"file":"member-schemas.d.ts","sourceRoot":"","sources":["../src/member-schemas.ts"],"names":[],"mappings":"AAAA,OAAO,EAAE,CAAC,EAAE,MAAM,KAAK,CAAC;AAExB,eAAO,MAAM,kBAAkB;;;;;;;iBAG7B,CAAC;AACH,MAAM,MAAM,iBAAiB,GAAG,CAAC,CAAC,KAAK,CAAC,OAAO,kBAAkB,CAAC,CAAC;AAEnE,eAAO,MAAM,kBAAkB;;;;;;iBAE7B,CAAC;AACH,MAAM,MAAM,iBAAiB,GAAG,CAAC,CAAC,KAAK,CAAC,OAAO,kBAAkB,CAAC,CAAC"}

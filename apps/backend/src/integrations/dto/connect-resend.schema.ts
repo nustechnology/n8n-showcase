@@ -1,7 +1,1 @@
-import { z } from 'zod';
-
-export const ConnectResendSchema = z.object({
-  apiKey: z.string().min(1, 'apiKey is required'),
-});
-
-export type ConnectResendInput = z.infer<typeof ConnectResendSchema>;
+export { ConnectResendSchema, type ConnectResendInput } from "@n8n-showcase/shared-schemas";

@@ -1,10 +1,18 @@
-import { z } from "zod";
+import {
+  workflowRunStatusSchema,
+  workflowStepStatusSchema,
+  integrationStatusSchema,
+  type WorkflowRunStatus,
+  type WorkflowStepStatus,
+  type IntegrationStatus,
+} from "@n8n-showcase/shared-schemas";
 
 export type StatusTone = "success" | "running" | "failed" | "pending" | "degraded" | "connecting";
 
-/** Backend's WorkflowRun.status enum, verbatim — never reuse these for integration health (see integrationStatusSchema). */
-export const runStatusSchema = z.enum(["PENDING", "RUNNING", "SUCCEEDED", "FAILED", "CANCELED"]);
-export type RunStatus = z.infer<typeof runStatusSchema>;
+export const runStatusSchema = workflowRunStatusSchema;
+export type RunStatus = WorkflowRunStatus;
+
+export { workflowStepStatusSchema, type WorkflowStepStatus, integrationStatusSchema, type IntegrationStatus };
 
 export function mapRunStatus(status: RunStatus): { tone: StatusTone; label: string } {
   switch (status) {
@@ -22,10 +30,6 @@ export function mapRunStatus(status: RunStatus): { tone: StatusTone; label: stri
   }
 }
 
-/** Backend's WorkflowRunStep.status enum, verbatim — distinct from RunStatus: a step can be SKIPPED, a run is CANCELED, never the other's value. */
-export const workflowStepStatusSchema = z.enum(["PENDING", "RUNNING", "SUCCEEDED", "FAILED", "SKIPPED"]);
-export type WorkflowStepStatus = z.infer<typeof workflowStepStatusSchema>;
-
 export function mapWorkflowStepStatus(status: WorkflowStepStatus): { tone: StatusTone; label: string } {
   switch (status) {
     case "SUCCEEDED":
@@ -41,10 +45,6 @@ export function mapWorkflowStepStatus(status: WorkflowStepStatus): { tone: Statu
       return { tone: "pending", label: "Waiting" };
   }
 }
-
-/** Backend's Integration.status enum, verbatim (backend API contract §2) — distinct from RunStatus. */
-export const integrationStatusSchema = z.enum(["DISCONNECTED", "CONNECTING", "ACTIVE", "DEGRADED", "ERROR"]);
-export type IntegrationStatus = z.infer<typeof integrationStatusSchema>;
 
 export function mapIntegrationStatus(status: IntegrationStatus): { tone: StatusTone; label: string } {
   switch (status) {
