@@ -1,5 +1,5 @@
 {
-  "name": "automation-experience-center-fe",
+  "name": "@n8n-showcase/frontend",
   "version": "0.1.0",
   "private": true,
   "scripts": {
@@ -7,6 +7,8 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
+    "typecheck": "tsc --noEmit",
+    "test": "echo \"no tests yet\"",
     "codegen:api": "openapi-typescript \"${NEXT_PUBLIC_API_URL:-http://localhost:3001}/openapi.json\" -o lib/api-schema.generated.ts"
   },
   "dependencies": {
