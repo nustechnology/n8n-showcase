@@ -129,7 +129,7 @@ Column names are `snake_case` in Postgres (`@map`/`@@map` throughout); Prisma Cl
 
 ### Orchestrator callbacks (`src/internal/`)
 
-`automation-experience-center-n8n` is a separate repo/service that runs the actual order-validation workflow: the backend kicks off a run (`POST ${N8N_BASE_URL}/webhook/order-received`, Header Auth with the same shared secret as below), and n8n calls back into this backend's `/internal/*` API for everything that needs state or a secret — n8n itself never touches Postgres or holds an OpenAI key.
+`apps/n8n/` holds the n8n workflow engine — the backend kicks off a run (`POST ${N8N_BASE_URL}/webhook/order-received`, Header Auth with the same shared secret as below), and n8n calls back into this backend's `/internal/*` API for everything that needs state or a secret — n8n itself never touches Postgres or holds an OpenAI key.
 
 - `N8nOrchestratorService` (`src/internal/n8n-orchestrator.service.ts`) is the outbound half of this boundary — the one call that goes backend → n8n, mirrored against every other call in this section going n8n → backend. Exported from `InternalModule` and consumed by `WebhooksModule` (which imports `InternalModule` for it) — same shape as `AuthModule` exporting `ClerkBackendService` for `TenantsModule` to consume. Called from `ShopifyWebhookController` right after `handleOrderCreated` succeeds, with a `correlationId` generated fresh per attempt (`randomUUID()`).
 - Auth is `InternalAuthGuard` (see "Request pipeline" above), not Clerk — `N8N_INTERNAL_TOKEN` is the one shared secret authenticating calls in both directions (backend → n8n webhook, n8n → `/internal/*`).

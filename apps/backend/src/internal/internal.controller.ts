@@ -21,7 +21,7 @@ import { InternalAuthGuard } from './guards/internal-auth.guard';
 // Called by n8n's HTTP Request nodes, not a browser/Clerk session — @Public()
 // opts every route here out of ClerkTenantGuard/PermissionsGuard, and
 // InternalAuthGuard is what actually guards them (shared-secret bearer
-// token). See automation-experience-center-n8n's integration spec for the
+// token). See apps/n8n/workflows/order-validation.json for the
 // full contract this controller implements. InternalThrottlerGuard runs
 // after auth — one shared per-deployment budget, not per-tenant (n8n's
 // calls carry no per-tenant auth context beyond a body field).

@@ -70,7 +70,7 @@ export class InternalService {
     return { workflowRunId: run.id };
   }
 
-  // No tenantId on this call (see automation-experience-center-n8n's
+  // No tenantId on this call (see apps/n8n/workflows/order-validation.json
   // order-validation workflow) — Order.id is a globally-unique cuid, so a
   // primary-key lookup can't cross tenants the way a client-supplied
   // tenantId could be spoofed. Same precedent as ShopifyWebhookController's

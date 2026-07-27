@@ -13,7 +13,7 @@ export const notificationSchema = z.object({
 });
 
 // GET /notifications returns { items, unreadCount }, not a bare array —
-// confirmed against the running backend (automation-experience-center-be,
+// confirmed against the running backend (@n8n-showcase/backend,
 // src/notifications/notifications.service.ts). unreadCount is
 // server-computed rather than derived by filtering `items` client-side.
 export const notificationsResponseSchema = z.object({

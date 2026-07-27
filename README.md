@@ -25,7 +25,7 @@ packages/
 
 ```bash
 # 1. Clone
-git clone <repo-url> && cd automation-experience-center
+git clone <repo-url> && cd n8n-showcase
 
 # 2. Install dependencies
 npm install

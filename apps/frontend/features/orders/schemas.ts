@@ -1,7 +1,7 @@
 import { z } from "zod";
 
 // Verbatim backend enum (backend API contract §3) — must stay in sync with
-// OrderStatus in automation-experience-center-be/prisma/schema.prisma. A
+// OrderStatus in apps/backend/prisma/schema.prisma. A
 // value present in the Prisma enum but missing here breaks the entire
 // GET /orders list, not just the one row with that status: zod fails the
 // whole array parse on a single invalid element.
