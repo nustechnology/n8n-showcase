@@ -1,0 +1,943 @@
+{
+  "name": "Order Validation",
+  "nodes": [
+    {
+      "id": "0b0cae34-c10f-4d12-8a1f-d067ca8b4ea2",
+      "name": "Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        250,
+        300
+      ],
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "order-received",
+        "authentication": "headerAuth",
+        "responseMode": "onReceived",
+        "options": {}
+      },
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "R8ikTjUCKdJP6lBR",
+          "name": "Backend Internal Token"
+        }
+      },
+      "webhookId": "ac2456f7-8a3c-4dc2-8cb3-94bc5a49ee8d"
+    },
+    {
+      "id": "33e5a31b-584d-44a4-b294-d5694d08e462",
+      "name": "Open Workflow Run",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        500,
+        300
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "http://host.docker.internal:3000/internal/workflow-runs",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ tenantId: $json.body.tenantId, orderId: $json.body.orderId, correlationId: $json.body.correlationId }) }}",
+        "options": {}
+      },
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "R8ikTjUCKdJP6lBR",
+          "name": "Backend Internal Token"
+        }
+      }
+    },
+    {
+      "id": "4ec9e4e4-523f-4578-b1ca-0fb64b9047ed",
+      "name": "Validate Order",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        750,
+        300
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "http://host.docker.internal:3000/internal/ai/validate-order",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ tenantId: $('Webhook').item.json.body.tenantId, orderId: $('Webhook').item.json.body.orderId }) }}",
+        "options": {}
+      },
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "R8ikTjUCKdJP6lBR",
+          "name": "Backend Internal Token"
+        }
+      }
+    },
+    {
+      "id": "25ec38b9-0d64-4510-b884-4783a68c6bb8",
+      "name": "Is Valid",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        1000,
+        300
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "e757781f-f2dd-4946-b6c0-a727815d94ba",
+              "leftValue": "={{ $json.valid }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "bc436daa-cc76-4ed6-a16c-47fc60f75053",
+      "name": "Mark Validated",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1250,
+        180
+      ],
+      "parameters": {
+        "method": "PATCH",
+        "url": "=http://host.docker.internal:3000/internal/orders/{{ $('Webhook').item.json.body.orderId }}/status",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ status: 'validated' }) }}",
+        "options": {}
+      },
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "R8ikTjUCKdJP6lBR",
+          "name": "Backend Internal Token"
+        }
+      }
+    },
+    {
+      "id": "477d27fc-6189-4c97-b0a6-6dbe518d4447",
+      "name": "Mark Validation Failed",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1250,
+        420
+      ],
+      "parameters": {
+        "method": "PATCH",
+        "url": "=http://host.docker.internal:3000/internal/orders/{{ $('Webhook').item.json.body.orderId }}/status",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ status: 'validation_failed' }) }}",
+        "options": {}
+      },
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "R8ikTjUCKdJP6lBR",
+          "name": "Backend Internal Token"
+        }
+      }
+    },
+    {
+      "id": "e5fb8034-5ab4-40be-8a1c-8ce8c108b77c",
+      "name": "Check Inventory",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1500,
+        180
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "http://host.docker.internal:3000/internal/integrations/zoho/check-inventory",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ tenantId: $('Webhook').item.json.body.tenantId, orderId: $('Webhook').item.json.body.orderId }) }}",
+        "options": {}
+      },
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "R8ikTjUCKdJP6lBR",
+          "name": "Backend Internal Token"
+        }
+      }
+    },
+    {
+      "id": "692a3118-fd39-4959-a125-320e4fab650a",
+      "name": "Record Check Inventory Step",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1750,
+        180
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "=http://host.docker.internal:3000/internal/workflow-runs/{{ $('Open Workflow Run').item.json.workflowRunId }}/steps",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ stepKey: 'check_inventory', status: $json.inStock ? 'succeeded' : 'failed' }) }}",
+        "options": {}
+      },
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "R8ikTjUCKdJP6lBR",
+          "name": "Backend Internal Token"
+        }
+      }
+    },
+    {
+      "id": "cb9f45b0-0d43-463b-83e1-8ca966f2bfda",
+      "name": "IF In Stock",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        2000,
+        180
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "f2a1c9e0-1111-4a1a-9a1a-1a1a1a1a1a1a",
+              "leftValue": "={{ $('Check Inventory').item.json.inStock }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "0f1cdbec-80d5-4ad4-b5cc-13a6afbc5699",
+      "name": "Create Shipment",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        2250,
+        60
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "http://host.docker.internal:3000/internal/integrations/easypost/create-shipment",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ tenantId: $('Webhook').item.json.body.tenantId, orderId: $('Webhook').item.json.body.orderId }) }}",
+        "options": {}
+      },
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "R8ikTjUCKdJP6lBR",
+          "name": "Backend Internal Token"
+        }
+      }
+    },
+    {
+      "id": "ecff21d3-d1b2-4d5a-8016-f9e6a7359c1d",
+      "name": "Mark Order Failed (Out Of Stock)",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        2250,
+        320
+      ],
+      "parameters": {
+        "method": "PATCH",
+        "url": "=http://host.docker.internal:3000/internal/orders/{{ $('Webhook').item.json.body.orderId }}/status",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ status: 'failed', reason: 'insufficient_stock' }) }}",
+        "options": {}
+      },
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "R8ikTjUCKdJP6lBR",
+          "name": "Backend Internal Token"
+        }
+      }
+    },
+    {
+      "id": "5443d44a-f8bb-4713-979d-d3df1ce5e657",
+      "name": "Record Create Shipment Step",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        2500,
+        60
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "=http://host.docker.internal:3000/internal/workflow-runs/{{ $('Open Workflow Run').item.json.workflowRunId }}/steps",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ stepKey: 'create_shipment', status: $json.shipmentId ? 'succeeded' : 'failed' }) }}",
+        "options": {}
+      },
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "R8ikTjUCKdJP6lBR",
+          "name": "Backend Internal Token"
+        }
+      }
+    },
+    {
+      "id": "751449a7-4111-44a1-8f8a-4977dbf3e5d8",
+      "name": "IF Shipment Created",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        2750,
+        60
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "f2a1c9e0-2222-4a1a-9a1a-1a1a1a1a1a1a",
+              "leftValue": "={{ !!$('Create Shipment').item.json.shipmentId }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "2fd03064-6909-4de2-b693-52733b62e9b4",
+      "name": "Mark Order Failed (Shipment Not Created)",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        3000,
+        200
+      ],
+      "parameters": {
+        "method": "PATCH",
+        "url": "=http://host.docker.internal:3000/internal/orders/{{ $('Webhook').item.json.body.orderId }}/status",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ status: 'failed', reason: 'shipment_creation_failed' }) }}",
+        "options": {}
+      },
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "R8ikTjUCKdJP6lBR",
+          "name": "Backend Internal Token"
+        }
+      }
+    },
+    {
+      "id": "ef12d61d-6875-47f9-9d73-78a295005cb5",
+      "name": "Mark Shipment Created",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        3000,
+        -60
+      ],
+      "parameters": {
+        "method": "PATCH",
+        "url": "=http://host.docker.internal:3000/internal/orders/{{ $('Webhook').item.json.body.orderId }}/status",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ status: 'shipment_created' }) }}",
+        "options": {}
+      },
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "R8ikTjUCKdJP6lBR",
+          "name": "Backend Internal Token"
+        }
+      }
+    },
+    {
+      "id": "adf015d1-3f1d-4d06-a63f-9a1d40ef55ba",
+      "name": "Update Shopify",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        3250,
+        -60
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "http://host.docker.internal:3000/internal/integrations/shopify/update-order",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ tenantId: $('Webhook').item.json.body.tenantId, orderId: $('Webhook').item.json.body.orderId, trackingNumber: $('Create Shipment').item.json.trackingNumber, carrier: $('Create Shipment').item.json.carrier }) }}",
+        "options": {}
+      },
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "R8ikTjUCKdJP6lBR",
+          "name": "Backend Internal Token"
+        }
+      }
+    },
+    {
+      "id": "151df1c3-ca86-4855-bc63-473bb8c9b4e8",
+      "name": "IF Shopify Updated",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        3500,
+        -60
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "f2a1c9e0-3333-4a1a-9a1a-1a1a1a1a1a1a",
+              "leftValue": "={{ $json.success }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "826a457d-1c75-49a0-a786-d43104080502",
+      "name": "Mark Order Failed (Shopify Update Failed)",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        3750,
+        80
+      ],
+      "parameters": {
+        "method": "PATCH",
+        "url": "=http://host.docker.internal:3000/internal/orders/{{ $('Webhook').item.json.body.orderId }}/status",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ status: 'failed', reason: 'shopify_update_failed' }) }}",
+        "options": {}
+      },
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "R8ikTjUCKdJP6lBR",
+          "name": "Backend Internal Token"
+        }
+      }
+    },
+    {
+      "id": "1abb375c-5285-4204-b965-2edf6467a0f8",
+      "name": "Record Update Shopify Step",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        3750,
+        -180
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "=http://host.docker.internal:3000/internal/workflow-runs/{{ $('Open Workflow Run').item.json.workflowRunId }}/steps",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ stepKey: 'update_shopify', status: 'succeeded' }) }}",
+        "options": {}
+      },
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "R8ikTjUCKdJP6lBR",
+          "name": "Backend Internal Token"
+        }
+      }
+    },
+    {
+      "id": "836d8bd4-37ce-4f5f-a318-bfefade60654",
+      "name": "Mark Fulfilled",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        4000,
+        -180
+      ],
+      "parameters": {
+        "method": "PATCH",
+        "url": "=http://host.docker.internal:3000/internal/orders/{{ $('Webhook').item.json.body.orderId }}/status",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ status: 'fulfilled' }) }}",
+        "options": {}
+      },
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "R8ikTjUCKdJP6lBR",
+          "name": "Backend Internal Token"
+        }
+      }
+    },
+    {
+      "id": "1c8cb292-94f8-46b9-838d-b8aa402b0e34",
+      "name": "Notify Slack",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        4250,
+        -180
+      ],
+      "onError": "continueRegularOutput",
+      "parameters": {
+        "method": "POST",
+        "url": "http://host.docker.internal:3000/internal/integrations/slack/send-message",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ tenantId: $('Webhook').item.json.body.tenantId, message: 'Order ' + $('Webhook').item.json.body.orderId + ' fulfilled — shipped via ' + $('Create Shipment').item.json.carrier + ' (tracking: ' + $('Create Shipment').item.json.trackingNumber + ')' }) }}",
+        "options": {}
+      },
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "R8ikTjUCKdJP6lBR",
+          "name": "Backend Internal Token"
+        }
+      }
+    },
+    {
+      "id": "796a2202-e493-4d33-8250-f2902715e682",
+      "name": "Record Notify Slack Step",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        4500,
+        -180
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "=http://host.docker.internal:3000/internal/workflow-runs/{{ $('Open Workflow Run').item.json.workflowRunId }}/steps",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ stepKey: 'notify_slack', status: $json.error ? 'failed' : 'succeeded' }) }}",
+        "options": {}
+      },
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "R8ikTjUCKdJP6lBR",
+          "name": "Backend Internal Token"
+        }
+      }
+    },
+    {
+      "id": "ec960ec4-e8c4-49b7-95ef-fc10d27ae05c",
+      "name": "Mark Notified",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        4750,
+        -180
+      ],
+      "parameters": {
+        "method": "PATCH",
+        "url": "=http://host.docker.internal:3000/internal/orders/{{ $('Webhook').item.json.body.orderId }}/status",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ status: 'notified' }) }}",
+        "options": {}
+      },
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "R8ikTjUCKdJP6lBR",
+          "name": "Backend Internal Token"
+        }
+      }
+    },
+    {
+      "id": "47267242-fc11-4fc3-bb45-6ab267832253",
+      "name": "Close Workflow Run",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        5000,
+        120
+      ],
+      "parameters": {
+        "method": "PATCH",
+        "url": "=http://host.docker.internal:3000/internal/workflow-runs/{{ $('Open Workflow Run').item.json.workflowRunId }}",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ status: ['failed', 'validation_failed'].includes($json.status) ? 'failed' : 'completed' }) }}",
+        "options": {}
+      },
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "R8ikTjUCKdJP6lBR",
+          "name": "Backend Internal Token"
+        }
+      }
+    }
+  ],
+  "connections": {
+    "Webhook": {
+      "main": [
+        [
+          {
+            "node": "Open Workflow Run",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Open Workflow Run": {
+      "main": [
+        [
+          {
+            "node": "Validate Order",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Validate Order": {
+      "main": [
+        [
+          {
+            "node": "Is Valid",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Is Valid": {
+      "main": [
+        [
+          {
+            "node": "Mark Validated",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Mark Validation Failed",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Mark Validated": {
+      "main": [
+        [
+          {
+            "node": "Check Inventory",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Mark Validation Failed": {
+      "main": [
+        [
+          {
+            "node": "Close Workflow Run",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check Inventory": {
+      "main": [
+        [
+          {
+            "node": "Record Check Inventory Step",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Record Check Inventory Step": {
+      "main": [
+        [
+          {
+            "node": "IF In Stock",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "IF In Stock": {
+      "main": [
+        [
+          {
+            "node": "Create Shipment",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Mark Order Failed (Out Of Stock)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Mark Order Failed (Out Of Stock)": {
+      "main": [
+        [
+          {
+            "node": "Close Workflow Run",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Create Shipment": {
+      "main": [
+        [
+          {
+            "node": "Record Create Shipment Step",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Record Create Shipment Step": {
+      "main": [
+        [
+          {
+            "node": "IF Shipment Created",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "IF Shipment Created": {
+      "main": [
+        [
+          {
+            "node": "Mark Shipment Created",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Mark Order Failed (Shipment Not Created)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Mark Order Failed (Shipment Not Created)": {
+      "main": [
+        [
+          {
+            "node": "Close Workflow Run",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Mark Shipment Created": {
+      "main": [
+        [
+          {
+            "node": "Update Shopify",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Update Shopify": {
+      "main": [
+        [
+          {
+            "node": "IF Shopify Updated",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "IF Shopify Updated": {
+      "main": [
+        [
+          {
+            "node": "Record Update Shopify Step",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Mark Order Failed (Shopify Update Failed)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Mark Order Failed (Shopify Update Failed)": {
+      "main": [
+        [
+          {
+            "node": "Close Workflow Run",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Record Update Shopify Step": {
+      "main": [
+        [
+          {
+            "node": "Mark Fulfilled",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Mark Fulfilled": {
+      "main": [
+        [
+          {
+            "node": "Notify Slack",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Notify Slack": {
+      "main": [
+        [
+          {
+            "node": "Record Notify Slack Step",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Record Notify Slack Step": {
+      "main": [
+        [
+          {
+            "node": "Mark Notified",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Mark Notified": {
+      "main": [
+        [
+          {
+            "node": "Close Workflow Run",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "pinData": {}
+}
