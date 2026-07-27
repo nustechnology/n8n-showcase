@@ -1,5 +1,7 @@
 FROM node:22-alpine AS builder
 
+RUN apk add --no-cache openssl
+
 WORKDIR /app
 
 COPY package.json package-lock.json turbo.json ./
@@ -25,6 +27,8 @@ RUN npx turbo prisma:generate --filter=@n8n-showcase/backend
 RUN npx turbo build --filter=@n8n-showcase/backend
 
 FROM node:22-alpine AS production
+
+RUN apk add --no-cache openssl
 
 WORKDIR /app
 

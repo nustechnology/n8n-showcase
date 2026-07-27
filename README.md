@@ -38,6 +38,10 @@ cp .env.example .env
 # Fill in CLERK_ISSUER, CLERK_SECRET_KEY, CLERK_WEBHOOK_SECRET,
 # CREDENTIALS_ENCRYPTION_KEY, POSTGRES_PASSWORD, N8N_INTERNAL_TOKEN, etc.
 
+# Prisma reads .env from its project directory, not the monorepo root.
+# Symlink it so you only maintain one .env file:
+ln -sf $(pwd)/.env apps/backend/.env
+
 # 5. Start PostgreSQL + n8n (for local dev, use Docker)
 docker compose up -d postgres n8n
 
@@ -196,6 +200,9 @@ Check that Node.js ≥ 22 and npm ≥ 11 are installed. Run `rm -rf node_modules
 
 **Prisma client not found / `@prisma/client` has no exported member**
 Run `npm run db:generate` to regenerate the Prisma client. This must be re-run after every `prisma/schema.prisma` change.
+
+**Prisma fails with `Environment variable not found: DATABASE_URL`**
+Prisma reads `.env` from the directory containing `prisma/schema.prisma` (`apps/backend/`), not the monorepo root. Run `ln -sf $(pwd)/.env apps/backend/.env` to symlink the root `.env`.
 
 **Docker compose won't start — port already in use**
 PostgreSQL may already be running on port 5432. Stop the local instance or change the port in `docker-compose.yml`.
