@@ -1,0 +1,23 @@
+services:
+  n8n:
+    image: docker.n8n.io/n8nio/n8n:latest
+    container_name: aec-n8n
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:5680:5678"
+    environment:
+      - N8N_ENCRYPTION_KEY=${N8N_ENCRYPTION_KEY}
+      - WEBHOOK_URL=http://localhost:5680/
+      - GENERIC_TIMEZONE=UTC
+    # n8n's HTTP Request nodes call back into the backend, which runs as a
+    # plain host process (not another container in this compose file) — from
+    # inside this container, "localhost" means the container itself, not the
+    # host. host-gateway resolves host.docker.internal to whatever address
+    # reaches the host machine, on both Linux and Docker Desktop.
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    volumes:
+      - n8n_data:/home/node/.n8n
+
+volumes:
+  n8n_data:
