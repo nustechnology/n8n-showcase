@@ -20,6 +20,7 @@
     "db:migrate:deploy": "turbo prisma:migrate:deploy",
     "db:seed": "turbo prisma:seed",
     "db:generate": "turbo prisma:generate",
+    "db:studio": "turbo prisma:studio",
     "format": "prettier --write \"**/*.{ts,tsx,json,md}\" --ignore-path .gitignore"
   },
   "devDependencies": {

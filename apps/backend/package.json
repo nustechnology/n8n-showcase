@@ -12,6 +12,7 @@
     "prisma:generate": "prisma generate",
     "prisma:migrate:deploy": "prisma migrate deploy",
     "prisma:seed": "tsc -p prisma/tsconfig.seed.json && node dist-prisma/seed.js",
+    "prisma:studio": "prisma studio",
     "test": "jest",
     "test:watch": "jest --watch",
     "lint": "eslint \"{src,test}/**/*.ts\"",
