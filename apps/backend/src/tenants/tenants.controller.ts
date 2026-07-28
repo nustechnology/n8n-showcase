@@ -2,6 +2,7 @@ import { Body, Controller, ForbiddenException, Get, Param, Patch, Sse } from '@n
 
 import { RequirePermission } from '../auth/decorators/require-permission.decorator';
 
+import { CurrentClerkOrgId } from '../common/decorators/current-clerk-org-id.decorator';
 import { CurrentTenant } from '../common/decorators/current-tenant.decorator';
 import { ZodValidationPipe } from '../common/pipes/zod-validation.pipe';
 
@@ -38,9 +39,13 @@ export class TenantsController {
   // tenant, so that's checked explicitly rather than trusted.
   @Sse(':id/activity/stream')
   @RequirePermission('orders:read')
-  activityStream(@CurrentTenant() tenantId: string, @Param('id') id: string) {
-    if (id !== tenantId) {
-      throw new ForbiddenException('Cannot subscribe to another workspace\'s activity stream');
+  activityStream(
+    @CurrentTenant() tenantId: string,
+    @CurrentClerkOrgId() clerkOrgId: string,
+    @Param('id') id: string,
+  ) {
+    if (id !== clerkOrgId) {
+      throw new ForbiddenException("Cannot subscribe to another workspace's activity stream");
     }
     return this.realtime.streamTenantActivity(tenantId);
   }

@@ -9,5 +9,5 @@
     "outDir": "../dist-prisma",
     "rootDir": "./"
   },
-  "include": ["seed.ts"]
+  "include": ["seed.ts", "sync-clerk.ts"]
 }

@@ -52,7 +52,14 @@ docker compose up -d postgres n8n
 npm run db:migrate:deploy
 npm run db:seed
 
-# 7. Start development servers
+# 7. Configure Clerk webhook
+# In Clerk Dashboard → Webhooks, add an endpoint pointing to:
+#   ${APP_BASE_URL}/webhooks/clerk
+# Subscribe to: organization.*, user.*, organizationMembership.*
+# After the webhook is configured, sync existing Clerk data:
+npm run db:sync-clerk
+
+# 8. Start development servers
 npm run dev
 ```
 
@@ -72,6 +79,8 @@ npm run dev
 | `npm run db:generate` | Regenerate Prisma client |
 | `npm run db:migrate:deploy` | Apply pending database migrations |
 | `npm run db:seed` | Seed system roles and permissions |
+| `npm run db:studio` | Open Prisma Studio (database GUI) |
+| `npm run db:sync-clerk` | Pull organizations, users and memberships from Clerk into the DB |
 | `npm run codegen:api` | Generate frontend API types from backend |
 
 ### Filtering by app
@@ -215,3 +224,6 @@ In Docker Compose mode, use service names (`backend:3000`, `n8n:5678`) instead o
 
 **Backend starts but `GET /health` doesn't respond / immediate crash**
 Check that all required environment variables are set (see `.env.example`). The backend fails fast at boot if `CLERK_ISSUER`, `CLERK_SECRET_KEY`, `CLERK_WEBHOOK_SECRET`, `DATABASE_URL`, `CREDENTIALS_ENCRYPTION_KEY`, `APP_BASE_URL`, `FRONTEND_URL`, `N8N_INTERNAL_TOKEN`, or `N8N_BASE_URL` are missing.
+
+**Frontend shows 403 on dashboard / tenants table is empty**
+After `db:seed`, the organizations/users/memberships from Clerk need to be synced into the DB. Run `npm run db:sync-clerk` to pull them from Clerk's API. This is also needed after dropping and recreating the database.
