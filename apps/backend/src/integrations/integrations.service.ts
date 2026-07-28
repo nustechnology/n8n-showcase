@@ -89,6 +89,14 @@ export interface IntegrationSummary {
   config: Record<string, unknown>;
 }
 
+// OAuth callback route segments can be group names rather than individual
+// provider names — resolve group names to the actual provider that handles
+// OAuth for that group. Only inventory has an OAuth provider today; every
+// other group uses api_key/webhook-based providers with no callback URL.
+const GROUP_CALLBACK_PROVIDER: Record<string, IntegrationProvider> = {
+  inventory: IntegrationProvider.ZOHO_INVENTORY,
+};
+
 @Injectable()
 export class IntegrationsService {
   private readonly logger = new Logger(IntegrationsService.name);
@@ -258,7 +266,7 @@ export class IntegrationsService {
     providerParam: string,
     query: Record<string, string | undefined>,
   ): Promise<{ redirectUrl: string }> {
-    const provider = this.parseProvider(providerParam);
+    const provider = this.resolveCallbackProvider(providerParam);
     const adapter = this.registry.get(provider);
 
     if (adapter.authType !== 'oauth' || !adapter.isConfigured()) {
@@ -583,7 +591,7 @@ export class IntegrationsService {
       : null;
     const { errorRedirect, successRedirect } = await this.buildCallbackRedirects(
       pending,
-      'zoho_inventory',
+      'inventory',
     );
 
     if (!state || !code) {
@@ -842,6 +850,12 @@ export class IntegrationsService {
         metadata: metadata as Prisma.InputJsonValue,
       },
     });
+  }
+
+  private resolveCallbackProvider(providerParam: string): IntegrationProvider {
+    const groupProvider = GROUP_CALLBACK_PROVIDER[providerParam.toLowerCase()];
+    if (groupProvider) return groupProvider;
+    return this.parseProvider(providerParam);
   }
 
   private parseProvider(value: string): IntegrationProvider {

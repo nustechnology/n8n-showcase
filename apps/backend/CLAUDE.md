@@ -202,7 +202,7 @@ Per-route, not global: `@Body(new ZodValidationPipe(SomeSchema)) body: SomeInput
 - `DELETE /tenants/me/members/:membershipId` — `members:manage`. Syncs Clerk then marks the local row `REMOVED`; 403 if the target is the Owner.
 - `GET /integrations` — `integrations:read`. Full `IntegrationProvider` catalog except `OPENAI`, with per-tenant status.
 - `POST /integrations/:provider/connect` — `integrations:manage`. Shopify: `{shop}` → `{authorizeUrl}`. Zoho: `{}` → `{authorizeUrl}` (no per-tenant input needed). Resend: `{apiKey}`. EasyPost: `{apiKey, fromAddress}` (`fromAddress` stored in `Integration.config`, not encrypted). Slack: `{webhookUrl}` — the last three validate + store immediately (no OAuth redirect).
-- `GET /integrations/:provider/callback` — public, Shopify or Zoho. Shopify verifies its own HMAC; Zoho verifies only `state` (no HMAC scheme, no shop-equivalent mismatch check). Redirects to `${FRONTEND_URL}/{tenantSlug}/integrations/{shopify,zoho_inventory}?status=success|error`.
+- `GET /integrations/:provider/callback` — public, Shopify or Zoho. Shopify verifies its own HMAC; Zoho verifies only `state` (no HMAC scheme, no shop-equivalent mismatch check). Redirects to `${FRONTEND_URL}/{tenantSlug}/integrations/{shopify,inventory}?status=success|error`.
 - `POST /integrations/:provider/test` — `integrations:test`. Read-only connectivity check, never side-effecting.
 - `DELETE /integrations/:provider` — `integrations:manage`. Best-effort third-party cleanup, then deletes the row.
 - `POST /webhooks/shopify/:integrationId` — public, verified via Shopify's webhook HMAC (base64/raw-body — a different verifier from the OAuth callback's hex/query-string one).

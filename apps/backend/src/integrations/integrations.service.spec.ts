@@ -548,13 +548,13 @@ describe('IntegrationsService', () => {
 
   describe('handleCallback — Zoho Inventory', () => {
     it('redirects to error when state or code is missing', async () => {
-      const result = await service.handleCallback('zoho_inventory', { state: 'state_1' });
+      const result = await service.handleCallback('inventory', { state: 'state_1' });
       expect(result.redirectUrl).toContain('status=error');
     });
 
     it('redirects to error when the state is unknown or expired', async () => {
       prisma.integration.findUnique.mockResolvedValue(null);
-      const result = await service.handleCallback('zoho_inventory', { state: 'state_1', code: 'code_1' });
+      const result = await service.handleCallback('inventory', { state: 'state_1', code: 'code_1' });
       expect(result.redirectUrl).toContain('status=error');
     });
 
@@ -566,7 +566,7 @@ describe('IntegrationsService', () => {
         credential: null,
       });
 
-      const result = await service.handleCallback('zoho_inventory', { state: 'state_1' });
+      const result = await service.handleCallback('inventory', { state: 'state_1' });
 
       expect(result.redirectUrl).toContain('status=error');
       expect(prisma.integration.delete).toHaveBeenCalledWith({ where: { id: 'int_1' } });
@@ -582,7 +582,7 @@ describe('IntegrationsService', () => {
         credential: null,
       });
 
-      const result = await service.handleCallback('zoho_inventory', { state: 'state_1', code: 'code_1' });
+      const result = await service.handleCallback('inventory', { state: 'state_1', code: 'code_1' });
 
       expect(result.redirectUrl).toContain('status=error');
       expect(prisma.integration.delete).toHaveBeenCalledWith({ where: { id: 'int_1' } });
@@ -597,7 +597,7 @@ describe('IntegrationsService', () => {
         credential: { ciphertext: 'c', iv: 'i', authTag: 'a' },
       });
 
-      await service.handleCallback('zoho_inventory', { state: 'state_1' });
+      await service.handleCallback('inventory', { state: 'state_1' });
 
       expect(prisma.integration.delete).not.toHaveBeenCalled();
     });
@@ -611,7 +611,7 @@ describe('IntegrationsService', () => {
       });
       zohoAdapter.exchangeCodeForToken.mockRejectedValue(new Error('zoho down'));
 
-      const result = await service.handleCallback('zoho_inventory', { state: 'state_1', code: 'code_1' });
+      const result = await service.handleCallback('inventory', { state: 'state_1', code: 'code_1' });
 
       expect(result.redirectUrl).toContain('status=error');
       expect(prisma.integration.update).toHaveBeenCalledWith(
@@ -632,7 +632,7 @@ describe('IntegrationsService', () => {
       });
       zohoAdapter.fetchDefaultOrganizationId.mockRejectedValue(new Error('no orgs'));
 
-      const result = await service.handleCallback('zoho_inventory', { state: 'state_1', code: 'code_1' });
+      const result = await service.handleCallback('inventory', { state: 'state_1', code: 'code_1' });
 
       expect(result.redirectUrl).toContain('status=error');
       expect(credentials.encrypt).not.toHaveBeenCalled();
@@ -646,9 +646,9 @@ describe('IntegrationsService', () => {
         oauthStateExpiresAt: new Date(Date.now() + 60_000),
       });
 
-      const result = await service.handleCallback('zoho_inventory', { state: 'state_1', code: 'code_1' });
+      const result = await service.handleCallback('inventory', { state: 'state_1', code: 'code_1' });
 
-      expect(result.redirectUrl).toBe(`${FRONTEND_URL}/acme/integrations/zoho_inventory?status=success`);
+      expect(result.redirectUrl).toBe(`${FRONTEND_URL}/acme/integrations/inventory?status=success`);
       expect(zohoAdapter.fetchDefaultOrganizationId).toHaveBeenCalled();
       expect(prisma.integration.update).toHaveBeenCalledWith(
         expect.objectContaining({

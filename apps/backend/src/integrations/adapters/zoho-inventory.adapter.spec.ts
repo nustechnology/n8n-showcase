@@ -68,7 +68,7 @@ describe('ZohoInventoryAdapter', () => {
     expect(parsed.searchParams.get('state')).toBe('state123');
     expect(parsed.searchParams.get('access_type')).toBe('offline');
     expect(parsed.searchParams.get('redirect_uri')).toBe(
-      'https://app.example.test/integrations/zoho_inventory/callback',
+      'https://app.example.test/integrations/inventory/callback',
     );
   });
 

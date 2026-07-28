@@ -1,6 +1,8 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
+
+import { useRouter, useSearchParams } from "next/navigation";
 
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -73,11 +75,28 @@ const INVENTORY_CATALOG: InventoryMeta[] = [
 ];
 
 export default function InventoryPage() {
+  const router = useRouter();
+  const searchParams = useSearchParams();
+  const callbackStatus = searchParams.get("status");
+
   const queryClient = useQueryClient();
   const apiFetch = useApiClient();
   const { data: integrations, isPending } = useIntegrations();
   const canManage = usePermission("integration:manage");
   const canTest = usePermission("integration:test");
+
+  useEffect(() => {
+    if (!callbackStatus) return;
+
+    queryClient.invalidateQueries({ queryKey: integrationsKey });
+    if (callbackStatus === "success") {
+      toast.success("Zoho Inventory connected — confirming the details below.");
+    } else {
+      toast.error("Something went wrong connecting Zoho Inventory.");
+    }
+    router.replace(window.location.pathname);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const inventoryIntegrations = integrations?.filter(
     (i) => (INVENTORY_PROVIDERS as readonly string[]).includes(i.provider)

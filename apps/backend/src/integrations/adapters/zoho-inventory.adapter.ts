@@ -58,7 +58,7 @@ export class ZohoInventoryAdapter implements OAuthAdapter {
   }
 
   private get redirectUri(): string {
-    return `${this.appBaseUrl}/integrations/zoho_inventory/callback`;
+    return `${this.appBaseUrl}/integrations/inventory/callback`;
   }
 
   buildAuthorizeUrl(params: Record<string, string>): string {
