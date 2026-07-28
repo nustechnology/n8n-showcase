@@ -1,4 +1,4 @@
-# Automation Experience Center — Frontend
+# n8n Showcase — Frontend
 
 Multi-tenant dashboard for monitoring e-commerce automation: Shopify orders flowing through AI validation, inventory checks, shipment creation, and customer notification.
 

@@ -3,7 +3,10 @@
 import { useEffect } from "react";
 
 import { useAuth, useOrganization } from "@clerk/nextjs";
-import { fetchEventSource } from "@microsoft/fetch-event-source";
+import { EventStreamContentType, fetchEventSource } from "@microsoft/fetch-event-source";
+
+class RetriableError extends Error {}
+class FatalError extends Error {}
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL;
 
@@ -23,13 +26,6 @@ export function useEventStream(path: string | null, onMessage: (event: MessageEv
 
     const controller = new AbortController();
 
-    // headers must be a resolved object (fetchEventSource's type doesn't
-    // accept a resolver function), so the token is fetched once up front.
-    // fetchEventSource retries dropped connections with these same headers —
-    // if a retry happens after the token expires, it'll reconnect
-    // unauthenticated. Fine for now since nothing calls this hook yet; a
-    // long-lived production usage should watch onerror and re-open with a
-    // fresh token instead of relying on the built-in retry.
     (async () => {
       const token = await getToken();
       await fetchEventSource(`${API_URL}${path}`, {
@@ -41,13 +37,25 @@ export function useEventStream(path: string | null, onMessage: (event: MessageEv
         onmessage(event) {
           onMessage(event as unknown as MessageEvent);
         },
-        // A non-2xx response throws here, which stops retrying rather than looping.
         async onopen(response) {
-          if (!response.ok) throw new Error(`Stream failed: ${response.status}`);
+          if (response.ok && response.headers.get("content-type")?.startsWith(EventStreamContentType)) return;
+
+          const status = response.status;
+          throw new FatalError(
+            status === 401 || status === 403
+              ? `Unauthorized — token likely expired (HTTP ${status})`
+              : `Stream failed (HTTP ${status})`,
+          );
+        },
+        onerror(err) {
+          if (err instanceof FatalError) throw err;
+          throw new RetriableError();
         },
       });
     })().catch((err) => {
-      if (controller.signal.aborted) return; // expected on unmount/path change
+      if (controller.signal.aborted) return;
+
+      if (err instanceof FatalError) return;
 
       console.error("Event stream error", err);
     });

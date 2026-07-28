@@ -18,7 +18,7 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Automation Experience Center",
+  title: "n8n Showcase",
   description: "Monitor Shopify orders as they move through automated fulfillment.",
 };
 

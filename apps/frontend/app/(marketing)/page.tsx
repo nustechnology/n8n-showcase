@@ -12,7 +12,7 @@ export default async function MarketingHome() {
   return (
     <div className="flex min-h-dvh flex-col">
       <header className="flex items-center justify-between border-b px-6 py-4">
-        <span className="font-semibold">Automation Experience Center</span>
+        <span className="font-semibold">n8n Showcase</span>
         <div className="flex items-center gap-2">
           {userId ? (
             <>
