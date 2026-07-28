@@ -36,7 +36,7 @@
       ],
       "parameters": {
         "method": "POST",
-        "url": "http://backend:3000/internal/workflow-runs",
+        "url": "http://host.docker.internal:3000/internal/workflow-runs",
         "authentication": "genericCredentialType",
         "genericAuthType": "httpHeaderAuth",
         "sendBody": true,
@@ -65,7 +65,7 @@
       ],
       "parameters": {
         "method": "POST",
-        "url": "http://backend:3000/internal/ai/validate-order",
+        "url": "http://host.docker.internal:3000/internal/ai/validate-order",
         "authentication": "genericCredentialType",
         "genericAuthType": "httpHeaderAuth",
         "sendBody": true,
@@ -127,7 +127,7 @@
       ],
       "parameters": {
         "method": "PATCH",
-        "url": "=http://backend:3000/internal/orders/{{ $('Webhook').item.json.body.orderId }}/status",
+        "url": "=http://host.docker.internal:3000/internal/orders/{{ $('Webhook').item.json.body.orderId }}/status",
         "authentication": "genericCredentialType",
         "genericAuthType": "httpHeaderAuth",
         "sendBody": true,
@@ -156,7 +156,7 @@
       ],
       "parameters": {
         "method": "PATCH",
-        "url": "=http://backend:3000/internal/orders/{{ $('Webhook').item.json.body.orderId }}/status",
+        "url": "=http://host.docker.internal:3000/internal/orders/{{ $('Webhook').item.json.body.orderId }}/status",
         "authentication": "genericCredentialType",
         "genericAuthType": "httpHeaderAuth",
         "sendBody": true,
@@ -186,7 +186,7 @@
       "onError": "continueRegularOutput",
       "parameters": {
         "method": "POST",
-        "url": "http://backend:3000/internal/integrations/zoho/check-inventory",
+        "url": "http://host.docker.internal:3000/internal/integrations/zoho/check-inventory",
         "authentication": "genericCredentialType",
         "genericAuthType": "httpHeaderAuth",
         "sendBody": true,
@@ -215,7 +215,7 @@
       ],
       "parameters": {
         "method": "POST",
-        "url": "=http://backend:3000/internal/workflow-runs/{{ $('Open Workflow Run').item.json.workflowRunId }}/steps",
+        "url": "=http://host.docker.internal:3000/internal/workflow-runs/{{ $('Open Workflow Run').item.json.workflowRunId }}/steps",
         "authentication": "genericCredentialType",
         "genericAuthType": "httpHeaderAuth",
         "sendBody": true,
@@ -278,7 +278,7 @@
       "onError": "continueRegularOutput",
       "parameters": {
         "method": "POST",
-        "url": "http://backend:3000/internal/integrations/easypost/create-shipment",
+        "url": "http://host.docker.internal:3000/internal/integrations/easypost/create-shipment",
         "authentication": "genericCredentialType",
         "genericAuthType": "httpHeaderAuth",
         "sendBody": true,
@@ -307,7 +307,7 @@
       ],
       "parameters": {
         "method": "PATCH",
-        "url": "=http://backend:3000/internal/orders/{{ $('Webhook').item.json.body.orderId }}/status",
+        "url": "=http://host.docker.internal:3000/internal/orders/{{ $('Webhook').item.json.body.orderId }}/status",
         "authentication": "genericCredentialType",
         "genericAuthType": "httpHeaderAuth",
         "sendBody": true,
@@ -336,7 +336,7 @@
       ],
       "parameters": {
         "method": "POST",
-        "url": "=http://backend:3000/internal/workflow-runs/{{ $('Open Workflow Run').item.json.workflowRunId }}/steps",
+        "url": "=http://host.docker.internal:3000/internal/workflow-runs/{{ $('Open Workflow Run').item.json.workflowRunId }}/steps",
         "authentication": "genericCredentialType",
         "genericAuthType": "httpHeaderAuth",
         "sendBody": true,
@@ -398,7 +398,7 @@
       ],
       "parameters": {
         "method": "PATCH",
-        "url": "=http://backend:3000/internal/orders/{{ $('Webhook').item.json.body.orderId }}/status",
+        "url": "=http://host.docker.internal:3000/internal/orders/{{ $('Webhook').item.json.body.orderId }}/status",
         "authentication": "genericCredentialType",
         "genericAuthType": "httpHeaderAuth",
         "sendBody": true,
@@ -427,7 +427,7 @@
       ],
       "parameters": {
         "method": "PATCH",
-        "url": "=http://backend:3000/internal/orders/{{ $('Webhook').item.json.body.orderId }}/status",
+        "url": "=http://host.docker.internal:3000/internal/orders/{{ $('Webhook').item.json.body.orderId }}/status",
         "authentication": "genericCredentialType",
         "genericAuthType": "httpHeaderAuth",
         "sendBody": true,
@@ -457,7 +457,7 @@
       "onError": "continueRegularOutput",
       "parameters": {
         "method": "POST",
-        "url": "http://backend:3000/internal/integrations/shopify/update-order",
+        "url": "http://host.docker.internal:3000/internal/integrations/shopify/update-order",
         "authentication": "genericCredentialType",
         "genericAuthType": "httpHeaderAuth",
         "sendBody": true,
@@ -519,7 +519,7 @@
       ],
       "parameters": {
         "method": "PATCH",
-        "url": "=http://backend:3000/internal/orders/{{ $('Webhook').item.json.body.orderId }}/status",
+        "url": "=http://host.docker.internal:3000/internal/orders/{{ $('Webhook').item.json.body.orderId }}/status",
         "authentication": "genericCredentialType",
         "genericAuthType": "httpHeaderAuth",
         "sendBody": true,
@@ -548,7 +548,7 @@
       ],
       "parameters": {
         "method": "POST",
-        "url": "=http://backend:3000/internal/workflow-runs/{{ $('Open Workflow Run').item.json.workflowRunId }}/steps",
+        "url": "=http://host.docker.internal:3000/internal/workflow-runs/{{ $('Open Workflow Run').item.json.workflowRunId }}/steps",
         "authentication": "genericCredentialType",
         "genericAuthType": "httpHeaderAuth",
         "sendBody": true,
@@ -577,7 +577,7 @@
       ],
       "parameters": {
         "method": "PATCH",
-        "url": "=http://backend:3000/internal/orders/{{ $('Webhook').item.json.body.orderId }}/status",
+        "url": "=http://host.docker.internal:3000/internal/orders/{{ $('Webhook').item.json.body.orderId }}/status",
         "authentication": "genericCredentialType",
         "genericAuthType": "httpHeaderAuth",
         "sendBody": true,
@@ -607,7 +607,7 @@
       "onError": "continueRegularOutput",
       "parameters": {
         "method": "POST",
-        "url": "http://backend:3000/internal/integrations/slack/send-message",
+        "url": "http://host.docker.internal:3000/internal/integrations/slack/send-message",
         "authentication": "genericCredentialType",
         "genericAuthType": "httpHeaderAuth",
         "sendBody": true,
@@ -636,7 +636,7 @@
       ],
       "parameters": {
         "method": "POST",
-        "url": "=http://backend:3000/internal/workflow-runs/{{ $('Open Workflow Run').item.json.workflowRunId }}/steps",
+        "url": "=http://host.docker.internal:3000/internal/workflow-runs/{{ $('Open Workflow Run').item.json.workflowRunId }}/steps",
         "authentication": "genericCredentialType",
         "genericAuthType": "httpHeaderAuth",
         "sendBody": true,
@@ -666,7 +666,7 @@
       "onError": "continueRegularOutput",
       "parameters": {
         "method": "POST",
-        "url": "http://backend:3000/internal/integrations/resend/send-email",
+        "url": "http://host.docker.internal:3000/internal/integrations/resend/send-email",
         "authentication": "genericCredentialType",
         "genericAuthType": "httpHeaderAuth",
         "sendBody": true,
@@ -695,7 +695,7 @@
       ],
       "parameters": {
         "method": "POST",
-        "url": "=http://backend:3000/internal/workflow-runs/{{ $('Open Workflow Run').item.json.workflowRunId }}/steps",
+        "url": "=http://host.docker.internal:3000/internal/workflow-runs/{{ $('Open Workflow Run').item.json.workflowRunId }}/steps",
         "authentication": "genericCredentialType",
         "genericAuthType": "httpHeaderAuth",
         "sendBody": true,
@@ -724,7 +724,7 @@
       ],
       "parameters": {
         "method": "PATCH",
-        "url": "=http://backend:3000/internal/orders/{{ $('Webhook').item.json.body.orderId }}/status",
+        "url": "=http://host.docker.internal:3000/internal/orders/{{ $('Webhook').item.json.body.orderId }}/status",
         "authentication": "genericCredentialType",
         "genericAuthType": "httpHeaderAuth",
         "sendBody": true,
@@ -753,7 +753,7 @@
       ],
       "parameters": {
         "method": "PATCH",
-        "url": "=http://backend:3000/internal/workflow-runs/{{ $('Open Workflow Run').item.json.workflowRunId }}",
+        "url": "=http://host.docker.internal:3000/internal/workflow-runs/{{ $('Open Workflow Run').item.json.workflowRunId }}",
         "authentication": "genericCredentialType",
         "genericAuthType": "httpHeaderAuth",
         "sendBody": true,
