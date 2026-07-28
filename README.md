@@ -42,6 +42,9 @@ cp .env.example .env
 # Symlink it so you only maintain one .env file:
 ln -sf $(pwd)/.env apps/backend/.env
 
+# Next.js/Clerk also reads .env.local from the app directory:
+ln -sf $(pwd)/.env apps/frontend/.env.local
+
 # 5. Start PostgreSQL + n8n (for local dev, use Docker)
 docker compose up -d postgres n8n
 
