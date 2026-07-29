@@ -48,11 +48,13 @@ export class EasyPostAdapter implements ApiKeyAdapter {
   readonly authType = 'api_key' as const;
 
   async validateKey(apiKey: string): Promise<void> {
-    await this.testConnection(apiKey);
+    if (!/^EZ[AT]K/.test(apiKey)) {
+      throw new UnauthorizedException('Invalid EasyPost API key — should start with EZAK or EZTK');
+    }
   }
 
   async testConnection(apiKey: string): Promise<void> {
-    const res = await fetch(`${EASYPOST_API_URL}/api_keys`, {
+    const res = await fetch(`${EASYPOST_API_URL}/carrier_accounts`, {
       headers: { Authorization: this.authHeader(apiKey) },
     });
     if (res.status === 401) {

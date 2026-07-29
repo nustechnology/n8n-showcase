@@ -6,8 +6,8 @@ import { EasyPostAdapter } from './easypost.adapter';
 
 describe('EasyPostAdapter', () => {
   let adapter: EasyPostAdapter;
-  const apiKey = 'ep_test_key_1';
-  const expectedAuthHeader = `Basic ${Buffer.from('ep_test_key_1:').toString('base64')}`;
+  const apiKey = 'EZAK123_test_key';
+  const expectedAuthHeader = `Basic ${Buffer.from('EZAK123_test_key:').toString('base64')}`;
   const fromAddress = { name: 'Acme Warehouse', street1: '1 Main St', city: 'Austin', state: 'TX', zip: '78701', country: 'US' };
 
   beforeEach(() => {
@@ -17,9 +17,27 @@ describe('EasyPostAdapter', () => {
 
   afterAll(() => nock.restore());
 
+  describe('validateKey', () => {
+    it('accepts a key starting with EZAK (production key prefix)', async () => {
+      await expect(adapter.validateKey('EZAKabc123')).resolves.toBeUndefined();
+    });
+
+    it('accepts a key starting with EZTK (test key prefix)', async () => {
+      await expect(adapter.validateKey('EZTKabc123')).resolves.toBeUndefined();
+    });
+
+    it('throws UnauthorizedException for an invalid key format', async () => {
+      await expect(adapter.validateKey('garbage')).rejects.toBeInstanceOf(UnauthorizedException);
+    });
+
+    it('throws UnauthorizedException for an empty key', async () => {
+      await expect(adapter.validateKey('')).rejects.toBeInstanceOf(UnauthorizedException);
+    });
+  });
+
   it('testConnection succeeds against a valid API key', async () => {
     nock('https://api.easypost.com')
-      .get('/v2/api_keys')
+      .get('/v2/carrier_accounts')
       .matchHeader('Authorization', expectedAuthHeader)
       .reply(200, {});
 
@@ -27,12 +45,12 @@ describe('EasyPostAdapter', () => {
   });
 
   it('testConnection throws UnauthorizedException on a 401', async () => {
-    nock('https://api.easypost.com').get('/v2/api_keys').reply(401);
+    nock('https://api.easypost.com').get('/v2/carrier_accounts').reply(401);
     await expect(adapter.testConnection(apiKey)).rejects.toBeInstanceOf(UnauthorizedException);
   });
 
   it('testConnection throws BadGatewayException on any other failure', async () => {
-    nock('https://api.easypost.com').get('/v2/api_keys').reply(500);
+    nock('https://api.easypost.com').get('/v2/carrier_accounts').reply(500);
     await expect(adapter.testConnection(apiKey)).rejects.toBeInstanceOf(BadGatewayException);
   });
 
