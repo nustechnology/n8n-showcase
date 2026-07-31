@@ -8,6 +8,12 @@ import { RealtimeService } from '../realtime/realtime.service';
 
 import { UpdateOrderStatusInput } from './dto/update-order-status.schema';
 
+// No pagination UI exists yet — the frontend fetches this once and renders
+// the whole array (see orders-list.tsx). This cap just bounds the query and
+// response size for a tenant with a very large order history; it isn't a
+// substitute for real pagination if that's ever needed.
+const MAX_ORDERS_RETURNED = 100;
+
 @Injectable()
 export class OrdersService {
   constructor(
@@ -16,7 +22,11 @@ export class OrdersService {
   ) {}
 
   findAll(tenantId: string) {
-    return this.prisma.order.findMany({ where: { tenantId }, orderBy: { createdAt: 'desc' } });
+    return this.prisma.order.findMany({
+      where: { tenantId },
+      orderBy: { createdAt: 'desc' },
+      take: MAX_ORDERS_RETURNED,
+    });
   }
 
   async findOne(tenantId: string, id: string) {

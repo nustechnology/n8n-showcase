@@ -2,6 +2,9 @@ import { BadGatewayException, Injectable, UnauthorizedException } from '@nestjs/
 
 import { IntegrationProvider } from '@prisma/client';
 
+import { fetchWithTimeout } from '../../common/http/fetch-with-timeout.util';
+import { assertPublicHttpsUrl } from '../../common/security/ssrf-guard.util';
+
 import { ApiKeyAdapter } from '../integration-adapter.interface';
 
 interface OdooCredential {
@@ -22,8 +25,10 @@ export class OdooAdapter implements ApiKeyAdapter {
 
   async testConnection(credential: string): Promise<void> {
     const { url, db, username, apiKey } = this.parseCredential(credential);
-    const res = await fetch(`${url}/web/session/authenticate`, {
+    await assertPublicHttpsUrl(url, 'Odoo instance URL');
+    const res = await fetchWithTimeout(`${url}/web/session/authenticate`, {
       method: 'POST',
+      redirect: 'error',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         jsonrpc: '2.0',
@@ -50,9 +55,11 @@ export class OdooAdapter implements ApiKeyAdapter {
     items: { sku: string; quantity: number }[],
   ): Promise<{ inStock: boolean; availableQuantity?: number }> {
     const { url, db, username, apiKey } = this.parseCredential(credential);
+    await assertPublicHttpsUrl(url, 'Odoo instance URL');
 
-    const authRes = await fetch(`${url}/web/session/authenticate`, {
+    const authRes = await fetchWithTimeout(`${url}/web/session/authenticate`, {
       method: 'POST',
+      redirect: 'error',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         jsonrpc: '2.0',
@@ -70,8 +77,9 @@ export class OdooAdapter implements ApiKeyAdapter {
     // out-of-stock.
     let totalAvailable = 0;
     for (const item of items) {
-      const res = await fetch(`${url}/jsonrpc`, {
+      const res = await fetchWithTimeout(`${url}/jsonrpc`, {
         method: 'POST',
+        redirect: 'error',
         headers: {
           'Content-Type': 'application/json',
           Cookie: session?.result?.session_id

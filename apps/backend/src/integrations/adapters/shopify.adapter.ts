@@ -3,6 +3,8 @@ import { ConfigService } from '@nestjs/config';
 
 import { IntegrationProvider } from '@prisma/client';
 
+import { fetchWithTimeout } from '../../common/http/fetch-with-timeout.util';
+
 import { OAuthAdapter } from '../integration-adapter.interface';
 
 const SHOPIFY_API_VERSION = '2026-07';
@@ -60,7 +62,7 @@ export class ShopifyAdapter implements OAuthAdapter {
 
   async exchangeCodeForToken({ shop, code }: { shop: string; code: string }): Promise<string> {
     this.assertConfigured();
-    const res = await fetch(`https://${shop}/admin/oauth/access_token`, {
+    const res = await fetchWithTimeout(`https://${shop}/admin/oauth/access_token`, {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({
@@ -81,7 +83,7 @@ export class ShopifyAdapter implements OAuthAdapter {
     shop: string,
     callbackUrl: string,
   ): Promise<{ webhookId: string }> {
-    const res = await fetch(`https://${shop}/admin/api/${SHOPIFY_API_VERSION}/webhooks.json`, {
+    const res = await fetchWithTimeout(`https://${shop}/admin/api/${SHOPIFY_API_VERSION}/webhooks.json`, {
       method: 'POST',
       headers: { 'content-type': 'application/json', 'X-Shopify-Access-Token': token },
       body: JSON.stringify({
@@ -96,7 +98,7 @@ export class ShopifyAdapter implements OAuthAdapter {
   }
 
   async unregisterWebhook(token: string, shop: string, webhookId: string): Promise<void> {
-    const res = await fetch(
+    const res = await fetchWithTimeout(
       `https://${shop}/admin/api/${SHOPIFY_API_VERSION}/webhooks/${webhookId}.json`,
       { method: 'DELETE', headers: { 'X-Shopify-Access-Token': token } },
     );
@@ -149,7 +151,7 @@ export class ShopifyAdapter implements OAuthAdapter {
       },
     };
 
-    const res = await fetch(
+    const res = await fetchWithTimeout(
       `https://${shop}/admin/api/${SHOPIFY_API_VERSION}/graphql.json`,
       {
         method: 'POST',
@@ -206,7 +208,7 @@ export class ShopifyAdapter implements OAuthAdapter {
         }
       }
     `;
-    const res = await fetch(
+    const res = await fetchWithTimeout(
       `https://${shop}/admin/api/${SHOPIFY_API_VERSION}/graphql.json`,
       {
         method: 'POST',
@@ -255,7 +257,7 @@ export class ShopifyAdapter implements OAuthAdapter {
   }
 
   private async fetchFirstLocationId(token: string, shop: string): Promise<number> {
-    const res = await fetch(
+    const res = await fetchWithTimeout(
       `https://${shop}/admin/api/${SHOPIFY_API_VERSION}/locations.json`,
       { headers: { 'X-Shopify-Access-Token': token } },
     );
@@ -271,7 +273,7 @@ export class ShopifyAdapter implements OAuthAdapter {
 
   async testConnection(credential: string, config: Record<string, unknown>): Promise<void> {
     const shop = config.shop as string;
-    const res = await fetch(`https://${shop}/admin/api/${SHOPIFY_API_VERSION}/shop.json`, {
+    const res = await fetchWithTimeout(`https://${shop}/admin/api/${SHOPIFY_API_VERSION}/shop.json`, {
       headers: { 'X-Shopify-Access-Token': credential },
     });
     if (!res.ok) {
@@ -292,7 +294,7 @@ export class ShopifyAdapter implements OAuthAdapter {
         'Shopify credentials are valid, but no order webhook is registered — disconnect and reconnect to finish setup.',
       );
     }
-    const webhookRes = await fetch(
+    const webhookRes = await fetchWithTimeout(
       `https://${shop}/admin/api/${SHOPIFY_API_VERSION}/webhooks/${webhookId}.json`,
       { headers: { 'X-Shopify-Access-Token': credential } },
     );

@@ -2,6 +2,8 @@ import { BadGatewayException, Injectable, UnauthorizedException } from '@nestjs/
 
 import { IntegrationProvider } from '@prisma/client';
 
+import { fetchWithTimeout } from '../../common/http/fetch-with-timeout.util';
+
 import { ApiKeyAdapter } from '../integration-adapter.interface';
 
 @Injectable()
@@ -14,7 +16,7 @@ export class SendGridAdapter implements ApiKeyAdapter {
   }
 
   async testConnection(apiKey: string): Promise<void> {
-    const res = await fetch('https://api.sendgrid.com/v3/templates?page_size=1', {
+    const res = await fetchWithTimeout('https://api.sendgrid.com/v3/templates?page_size=1', {
       headers: { Authorization: `Bearer ${apiKey}` },
     });
     if (res.status === 401 || res.status === 403) {
@@ -31,7 +33,7 @@ export class SendGridAdapter implements ApiKeyAdapter {
     subject: string;
     html: string;
   }): Promise<void> {
-    const res = await fetch('https://api.sendgrid.com/v3/mail/send', {
+    const res = await fetchWithTimeout('https://api.sendgrid.com/v3/mail/send', {
       method: 'POST',
       headers: {
         Authorization: `Bearer ${apiKey}`,

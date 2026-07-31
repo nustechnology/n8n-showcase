@@ -18,6 +18,7 @@ import { Public } from '../common/decorators/public.decorator';
 
 import { ClerkWebhookEvent } from './clerk-webhook-event.types';
 import { ClerkWebhookService } from './clerk-webhook.service';
+import { claimWebhookInboundEvent } from './webhook-inbox-claim.util';
 
 @Public()
 @Controller('webhooks/clerk')
@@ -61,37 +62,25 @@ export class ClerkWebhookController {
       throw new BadRequestException('Invalid webhook signature');
     }
 
-    // Svix redelivers on a non-2xx response, and can occasionally redeliver
-    // an already-succeeded event too — svix-id is the dedupe key. A prior
-    // FAILED row is the one exception that must NOT be deduped away: a
-    // manual "Resend" from Clerk's dashboard reuses the same svix-id, and
-    // that resend is exactly how a failed webhook gets recovered — so it
-    // has to be allowed to actually reprocess, not silently swallowed
-    // forever because a row already exists.
-    const existing = await this.prisma.webhookInboundEvent.findUnique({
-      where: { source_externalId: { source: 'CLERK', externalId: svixId } },
+    // Claims the (source, externalId) row atomically before any business
+    // logic runs — closes the race where two concurrent deliveries of the
+    // same svix-id both pass a check-then-act gap and both process the
+    // event. Svix redelivers on a non-2xx response, and can occasionally
+    // redeliver an already-succeeded event too. A prior FAILED row is the
+    // one exception that must NOT be deduped away: a manual "Resend" from
+    // Clerk's dashboard reuses the same svix-id, and that resend is
+    // exactly how a failed webhook gets recovered — so claiming it back
+    // atomically (guarded by `status: 'FAILED'`) has to be allowed, not
+    // silently swallowed forever because a row already exists.
+    const claimed = await claimWebhookInboundEvent(this.prisma, {
+      source: 'CLERK',
+      externalId: svixId,
+      payload: event as unknown as Prisma.InputJsonValue,
+      headers: { 'svix-id': svixId, 'svix-timestamp': svixTimestamp } as Prisma.InputJsonValue,
     });
-    if (existing && existing.status !== 'FAILED') {
+    if (!claimed) {
       return { received: true };
     }
-
-    await this.prisma.webhookInboundEvent.upsert({
-      where: { source_externalId: { source: 'CLERK', externalId: svixId } },
-      create: {
-        source: 'CLERK',
-        externalId: svixId,
-        payload: event as unknown as Prisma.InputJsonValue,
-        headers: { 'svix-id': svixId, 'svix-timestamp': svixTimestamp } as Prisma.InputJsonValue,
-        signatureValid: true,
-        status: 'PROCESSING',
-      },
-      update: {
-        payload: event as unknown as Prisma.InputJsonValue,
-        headers: { 'svix-id': svixId, 'svix-timestamp': svixTimestamp } as Prisma.InputJsonValue,
-        status: 'PROCESSING',
-        processedAt: null,
-      },
-    });
 
     try {
       await this.clerkWebhooks.handle(event);

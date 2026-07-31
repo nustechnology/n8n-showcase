@@ -2,6 +2,8 @@ import { BadGatewayException, Injectable, UnauthorizedException } from '@nestjs/
 
 import { IntegrationProvider } from '@prisma/client';
 
+import { fetchWithTimeout } from '../../common/http/fetch-with-timeout.util';
+
 import { ApiKeyAdapter } from '../integration-adapter.interface';
 
 const EASYPOST_API_URL = 'https://api.easypost.com/v2';
@@ -54,7 +56,7 @@ export class EasyPostAdapter implements ApiKeyAdapter {
   }
 
   async testConnection(apiKey: string): Promise<void> {
-    const res = await fetch(`${EASYPOST_API_URL}/carrier_accounts`, {
+    const res = await fetchWithTimeout(`${EASYPOST_API_URL}/carrier_accounts`, {
       headers: { Authorization: this.authHeader(apiKey) },
     });
     if (res.status === 401) {
@@ -90,7 +92,7 @@ export class EasyPostAdapter implements ApiKeyAdapter {
       shipment: { to_address: toAddress, from_address: fromAddress, parcel: PLACEHOLDER_PARCEL },
     };
 
-    const createRes = await fetch(`${EASYPOST_API_URL}/shipments`, {
+    const createRes = await fetchWithTimeout(`${EASYPOST_API_URL}/shipments`, {
       method: 'POST',
       headers,
       body: JSON.stringify(shipmentPayload),
@@ -116,7 +118,7 @@ export class EasyPostAdapter implements ApiKeyAdapter {
       validRates[0],
     );
 
-    const buyRes = await fetch(`${EASYPOST_API_URL}/shipments/${created.id}/buy`, {
+    const buyRes = await fetchWithTimeout(`${EASYPOST_API_URL}/shipments/${created.id}/buy`, {
       method: 'POST',
       headers,
       body: JSON.stringify({ rate: { id: cheapest.id } }),

@@ -2,6 +2,8 @@ import { BadGatewayException, Injectable, UnauthorizedException } from '@nestjs/
 
 import { IntegrationProvider } from '@prisma/client';
 
+import { fetchWithTimeout } from '../../common/http/fetch-with-timeout.util';
+
 import { ApiKeyAdapter } from '../integration-adapter.interface';
 
 // Same shape as SlackAdapter — the credential is the webhook URL itself,
@@ -25,7 +27,7 @@ export class DiscordAdapter implements ApiKeyAdapter {
   }
 
   private async post(webhookUrl: string, text: string): Promise<void> {
-    const res = await fetch(webhookUrl, {
+    const res = await fetchWithTimeout(webhookUrl, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ content: text }),

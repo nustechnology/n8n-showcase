@@ -1,6 +1,8 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 
+import { fetchWithTimeout } from '../common/http/fetch-with-timeout.util';
+
 export interface StartOrderValidationRunInput {
   tenantId: string;
   orderId: string;
@@ -25,7 +27,7 @@ export class N8nOrchestratorService {
   }
 
   async startOrderValidationRun(input: StartOrderValidationRunInput): Promise<void> {
-    const res = await fetch(this.webhookUrl, {
+    const res = await fetchWithTimeout(this.webhookUrl, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',

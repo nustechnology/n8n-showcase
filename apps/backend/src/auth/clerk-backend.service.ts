@@ -1,6 +1,8 @@
 import { BadGatewayException, Injectable } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 
+import { fetchWithTimeout } from '../common/http/fetch-with-timeout.util';
+
 const CLERK_API_BASE = 'https://api.clerk.com/v1';
 
 export type ClerkOrgRole = 'org:admin' | 'org:member';
@@ -73,7 +75,7 @@ export class ClerkBackendService {
   }
 
   private async request(path: string, init: { method: string; body?: unknown }): Promise<void> {
-    const res = await fetch(`${CLERK_API_BASE}${path}`, {
+    const res = await fetchWithTimeout(`${CLERK_API_BASE}${path}`, {
       method: init.method,
       headers: {
         authorization: `Bearer ${this.secretKey}`,

@@ -2,6 +2,8 @@ import { BadGatewayException, Injectable, UnauthorizedException } from '@nestjs/
 
 import { IntegrationProvider } from '@prisma/client';
 
+import { fetchWithTimeout } from '../../common/http/fetch-with-timeout.util';
+
 import { ApiKeyAdapter } from '../integration-adapter.interface';
 
 @Injectable()
@@ -14,7 +16,7 @@ export class ResendAdapter implements ApiKeyAdapter {
   }
 
   async testConnection(apiKey: string): Promise<void> {
-    const res = await fetch('https://api.resend.com/domains', {
+    const res = await fetchWithTimeout('https://api.resend.com/domains', {
       headers: { Authorization: `Bearer ${apiKey}` },
     });
     if (res.status === 401 || res.status === 403) {
@@ -37,7 +39,7 @@ export class ResendAdapter implements ApiKeyAdapter {
     subject: string;
     html: string;
   }): Promise<void> {
-    const res = await fetch('https://api.resend.com/emails', {
+    const res = await fetchWithTimeout('https://api.resend.com/emails', {
       method: 'POST',
       headers: {
         Authorization: `Bearer ${apiKey}`,

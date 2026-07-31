@@ -8,6 +8,8 @@ import { ConfigService } from '@nestjs/config';
 
 import { IntegrationProvider } from '@prisma/client';
 
+import { fetchWithTimeout } from '../../common/http/fetch-with-timeout.util';
+
 import { OAuthAdapter } from '../integration-adapter.interface';
 
 const ZOHO_ACCOUNTS_URL = 'https://accounts.zoho.com';
@@ -77,7 +79,7 @@ export class ZohoInventoryAdapter implements OAuthAdapter {
 
   async exchangeCodeForToken(params: Record<string, string>): Promise<string> {
     this.assertConfigured();
-    const res = await fetch(`${ZOHO_ACCOUNTS_URL}/oauth/v2/token`, {
+    const res = await fetchWithTimeout(`${ZOHO_ACCOUNTS_URL}/oauth/v2/token`, {
       method: 'POST',
       headers: { 'content-type': 'application/x-www-form-urlencoded' },
       body: new URLSearchParams({
@@ -108,7 +110,7 @@ export class ZohoInventoryAdapter implements OAuthAdapter {
   async refreshToken(currentCredential: string): Promise<string> {
     this.assertConfigured();
     const { refreshToken } = JSON.parse(currentCredential) as ZohoCredential;
-    const res = await fetch(`${ZOHO_ACCOUNTS_URL}/oauth/v2/token`, {
+    const res = await fetchWithTimeout(`${ZOHO_ACCOUNTS_URL}/oauth/v2/token`, {
       method: 'POST',
       headers: { 'content-type': 'application/x-www-form-urlencoded' },
       body: new URLSearchParams({
@@ -131,7 +133,7 @@ export class ZohoInventoryAdapter implements OAuthAdapter {
 
   async testConnection(credential: string): Promise<void> {
     const { accessToken } = JSON.parse(credential) as ZohoCredential;
-    const res = await fetch(`${ZOHO_API_URL}/organizations`, {
+    const res = await fetchWithTimeout(`${ZOHO_API_URL}/organizations`, {
       headers: { Authorization: `Zoho-oauthtoken ${accessToken}` },
     });
     if (!res.ok) {
@@ -147,7 +149,7 @@ export class ZohoInventoryAdapter implements OAuthAdapter {
   // already made elsewhere in this app).
   async fetchDefaultOrganizationId(credential: string): Promise<string> {
     const { accessToken } = JSON.parse(credential) as ZohoCredential;
-    const res = await fetch(`${ZOHO_API_URL}/organizations`, {
+    const res = await fetchWithTimeout(`${ZOHO_API_URL}/organizations`, {
       headers: { Authorization: `Zoho-oauthtoken ${accessToken}` },
     });
     if (!res.ok) {
@@ -178,7 +180,7 @@ export class ZohoInventoryAdapter implements OAuthAdapter {
     let minAvailable: number | undefined;
     for (const item of checkable) {
       const query = new URLSearchParams({ organization_id: organizationId, sku: item.sku });
-      const res = await fetch(`${ZOHO_API_URL}/items?${query.toString()}`, {
+      const res = await fetchWithTimeout(`${ZOHO_API_URL}/items?${query.toString()}`, {
         headers: { Authorization: `Zoho-oauthtoken ${accessToken}` },
       });
       if (res.status === 401) {

@@ -2,6 +2,8 @@ import { BadGatewayException, Injectable, UnauthorizedException } from '@nestjs/
 
 import { IntegrationProvider } from '@prisma/client';
 
+import { fetchWithTimeout } from '../../common/http/fetch-with-timeout.util';
+
 import { ApiKeyAdapter } from '../integration-adapter.interface';
 
 @Injectable()
@@ -15,7 +17,7 @@ export class MailgunAdapter implements ApiKeyAdapter {
 
   async testConnection(apiKey: string): Promise<void> {
     const { domain, key } = this.parseCredential(apiKey);
-    const res = await fetch(`https://api.mailgun.net/v3/${domain}/events?limit=1`, {
+    const res = await fetchWithTimeout(`https://api.mailgun.net/v3/${domain}/events?limit=1`, {
       headers: { Authorization: `Basic ${Buffer.from(`api:${key}`).toString('base64')}` },
     });
     if (res.status === 401 || res.status === 403) {
@@ -40,7 +42,7 @@ export class MailgunAdapter implements ApiKeyAdapter {
     formBody.append('subject', params.subject);
     formBody.append('html', params.html);
 
-    const res = await fetch(`https://api.mailgun.net/v3/${domain}/messages`, {
+    const res = await fetchWithTimeout(`https://api.mailgun.net/v3/${domain}/messages`, {
       method: 'POST',
       headers: {
         Authorization: `Basic ${Buffer.from(`api:${key}`).toString('base64')}`,

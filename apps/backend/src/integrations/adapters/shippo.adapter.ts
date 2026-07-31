@@ -2,6 +2,8 @@ import { BadGatewayException, Injectable, UnauthorizedException } from '@nestjs/
 
 import { IntegrationProvider } from '@prisma/client';
 
+import { fetchWithTimeout } from '../../common/http/fetch-with-timeout.util';
+
 import { ApiKeyAdapter } from '../integration-adapter.interface';
 
 const SHIPPO_API_URL = 'https://api.goshippo.com';
@@ -42,7 +44,7 @@ export class ShippoAdapter implements ApiKeyAdapter {
   }
 
   async testConnection(apiKey: string): Promise<void> {
-    const res = await fetch(`${SHIPPO_API_URL}/v1/parcels`, {
+    const res = await fetchWithTimeout(`${SHIPPO_API_URL}/v1/parcels`, {
       headers: { Authorization: `ShippoToken ${apiKey}` },
     });
     if (res.status === 401) {
@@ -79,7 +81,7 @@ export class ShippoAdapter implements ApiKeyAdapter {
       async: false,
     };
 
-    const res = await fetch(`${SHIPPO_API_URL}/shipments/`, {
+    const res = await fetchWithTimeout(`${SHIPPO_API_URL}/shipments/`, {
       method: 'POST',
       headers,
       body: JSON.stringify(body),
@@ -103,7 +105,7 @@ export class ShippoAdapter implements ApiKeyAdapter {
       validRates[0],
     );
 
-    const txRes = await fetch(`${SHIPPO_API_URL}/transactions/`, {
+    const txRes = await fetchWithTimeout(`${SHIPPO_API_URL}/transactions/`, {
       method: 'POST',
       headers,
       body: JSON.stringify({ rate: cheapest.object_id, async: false }),

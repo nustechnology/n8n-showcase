@@ -8,6 +8,7 @@ import {
   Post,
   RawBodyRequest,
   Req,
+  ServiceUnavailableException,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 
@@ -27,6 +28,7 @@ import { RealtimeService } from '../realtime/realtime.service';
 
 import { ShopifyOrderPayload } from './shopify-order-payload.types';
 import { ShopifyWebhookService } from './shopify-webhook.service';
+import { claimWebhookInboundEvent } from './webhook-inbox-claim.util';
 
 // Path-scoped by Integration.id, not a single static URL with tenant
 // resolved from a header — HMAC verification alone can't identify which
@@ -82,26 +84,35 @@ export class ShopifyWebhookController {
       throw new BadRequestException('Invalid webhook signature');
     }
 
-    // Dedupe before touching Integration lookups — Shopify redelivers on
-    // any non-2xx response. A prior FAILED row is the one exception that
-    // must NOT be deduped away — same reasoning as ClerkWebhookController:
-    // a row already existing shouldn't permanently block a legitimate
-    // reprocessing attempt for an event that never actually succeeded.
-    const existing = await this.prisma.webhookInboundEvent.findUnique({
-      where: { source_externalId: { source: 'SHOPIFY', externalId: webhookIdHeader } },
-    });
-    if (existing && existing.status !== 'FAILED') {
-      return { received: true };
-    }
-
     const payload = JSON.parse(req.rawBody.toString('utf8')) as ShopifyOrderPayload;
     const integration = await this.prisma.integration.findUnique({ where: { id: integrationId } });
+
+    // Claims the (source, externalId) row atomically before any business
+    // logic runs — closes the race where two concurrent deliveries of the
+    // same webhookId both pass a check-then-act gap and both process the
+    // order. If we lose the claim, either another request already handled
+    // (or is handling) this exact event, or it's already PROCESSED/
+    // PROCESSING and not eligible for a FAILED-only retry — either way,
+    // nothing to do here.
+    const claimed = await claimWebhookInboundEvent(this.prisma, {
+      tenantId: integration?.tenantId,
+      source: 'SHOPIFY',
+      externalId: webhookIdHeader,
+      payload: payload as unknown as Prisma.InputJsonValue,
+      headers: { shop: shopHeader, webhookId: webhookIdHeader } as Prisma.InputJsonValue,
+    });
+    if (!claimed) {
+      return { received: true };
+    }
 
     // A miss, a not-ACTIVE integration, or a shop header that doesn't
     // match what's on file are all handled the same way: ack 200, record
     // FAILED, never 500 — Shopify retries a non-2xx indefinitely, and any
     // of these can legitimately happen (e.g. a disconnected integration's
-    // Shopify-side subscription isn't always cleaned up in time).
+    // Shopify-side subscription isn't always cleaned up in time). These
+    // are permanent until the tenant fixes their config, so unlike the
+    // processing failure below, a retry genuinely wouldn't help — 200
+    // stays correct here.
     let failureReason: string | null = null;
     if (!integration) {
       failureReason = 'No integration found for this webhook URL';
@@ -111,28 +122,12 @@ export class ShopifyWebhookController {
       failureReason = 'X-Shopify-Shop-Domain does not match the connected shop';
     }
 
-    await this.prisma.webhookInboundEvent.upsert({
-      where: { source_externalId: { source: 'SHOPIFY', externalId: webhookIdHeader } },
-      create: {
-        tenantId: integration?.tenantId,
-        source: 'SHOPIFY',
-        externalId: webhookIdHeader,
-        payload: payload as unknown as Prisma.InputJsonValue,
-        headers: { shop: shopHeader, webhookId: webhookIdHeader } as Prisma.InputJsonValue,
-        signatureValid: true,
-        status: failureReason ? 'FAILED' : 'PROCESSING',
-      },
-      update: {
-        tenantId: integration?.tenantId,
-        payload: payload as unknown as Prisma.InputJsonValue,
-        headers: { shop: shopHeader, webhookId: webhookIdHeader } as Prisma.InputJsonValue,
-        status: failureReason ? 'FAILED' : 'PROCESSING',
-        processedAt: null,
-      },
-    });
-
     if (failureReason || !integration) {
       this.logger.warn(`Rejected Shopify webhook for integration ${integrationId}: ${failureReason}`);
+      await this.prisma.webhookInboundEvent.update({
+        where: { source_externalId: { source: 'SHOPIFY', externalId: webhookIdHeader } },
+        data: { status: 'FAILED' },
+      });
       return { received: true };
     }
 
@@ -167,6 +162,12 @@ export class ShopifyWebhookController {
         where: { source_externalId: { source: 'SHOPIFY', externalId: webhookIdHeader } },
         data: { status: 'FAILED' },
       });
+      // Unlike the rejection branches above, this failure (DB/n8n
+      // unreachable, etc.) is genuinely transient — a 503 lets Shopify's
+      // own automatic redelivery retry it, instead of requiring a manual
+      // resend from the Shopify dashboard for something that might just
+      // clear up on its own.
+      throw new ServiceUnavailableException('Failed to process Shopify order webhook');
     }
 
     return { received: true };

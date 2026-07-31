@@ -1,10 +1,12 @@
 import { createHmac } from 'crypto';
 
-import { BadRequestException, RawBodyRequest } from '@nestjs/common';
+import { BadRequestException, RawBodyRequest, ServiceUnavailableException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { Test } from '@nestjs/testing';
 
 import { Request } from 'express';
+
+import { Prisma } from '@prisma/client';
 
 import { PrismaService } from '../prisma/prisma.service';
 
@@ -35,10 +37,15 @@ function buildRequest(
   return { rawBody, headers } as unknown as RawBodyRequest<Request>;
 }
 
+const DUPLICATE_KEY_ERROR = new Prisma.PrismaClientKnownRequestError('Unique constraint failed', {
+  code: 'P2002',
+  clientVersion: '5.22.0',
+});
+
 describe('ShopifyWebhookController', () => {
   let controller: ShopifyWebhookController;
   let prisma: {
-    webhookInboundEvent: { findUnique: jest.Mock; upsert: jest.Mock; update: jest.Mock };
+    webhookInboundEvent: { create: jest.Mock; updateMany: jest.Mock; update: jest.Mock };
     integration: { findUnique: jest.Mock };
   };
   let shopifyWebhooks: { handleOrderCreated: jest.Mock };
@@ -48,8 +55,8 @@ describe('ShopifyWebhookController', () => {
   beforeEach(async () => {
     prisma = {
       webhookInboundEvent: {
-        findUnique: jest.fn().mockResolvedValue(null),
-        upsert: jest.fn().mockResolvedValue({}),
+        create: jest.fn().mockResolvedValue({}),
+        updateMany: jest.fn().mockResolvedValue({ count: 1 }),
         update: jest.fn().mockResolvedValue({}),
       },
       integration: {
@@ -100,23 +107,25 @@ describe('ShopifyWebhookController', () => {
   });
 
   it('is idempotent: a previously-PROCESSED webhook id is acked without re-processing', async () => {
-    prisma.webhookInboundEvent.findUnique.mockResolvedValue({ id: 'already-there', status: 'PROCESSED' });
+    prisma.webhookInboundEvent.create.mockRejectedValue(DUPLICATE_KEY_ERROR);
+    prisma.webhookInboundEvent.updateMany.mockResolvedValue({ count: 0 }); // not FAILED, so not reclaimable
     const req = buildRequest({ id: 1 });
 
     await expect(controller.handle('int_1', req)).resolves.toEqual({ received: true });
     expect(shopifyWebhooks.handleOrderCreated).not.toHaveBeenCalled();
-    expect(prisma.integration.findUnique).not.toHaveBeenCalled();
   });
 
   it('re-processes when the existing row is FAILED — a redelivery must not be silently swallowed', async () => {
-    prisma.webhookInboundEvent.findUnique.mockResolvedValue({ id: 'already-there', status: 'FAILED' });
+    prisma.webhookInboundEvent.create.mockRejectedValue(DUPLICATE_KEY_ERROR);
+    prisma.webhookInboundEvent.updateMany.mockResolvedValue({ count: 1 }); // reclaimed a FAILED row
     const req = buildRequest({ id: 4001 });
 
     await expect(controller.handle('int_1', req)).resolves.toEqual({ received: true });
     expect(shopifyWebhooks.handleOrderCreated).toHaveBeenCalled();
-    expect(prisma.webhookInboundEvent.upsert).toHaveBeenCalledWith(
+    expect(prisma.webhookInboundEvent.updateMany).toHaveBeenCalledWith(
       expect.objectContaining({
-        update: expect.objectContaining({ status: 'PROCESSING', processedAt: null }),
+        where: expect.objectContaining({ status: 'FAILED' }),
+        data: expect.objectContaining({ status: 'PROCESSING', processedAt: null }),
       }),
     );
   });
@@ -127,8 +136,11 @@ describe('ShopifyWebhookController', () => {
 
     await expect(controller.handle('int_missing', req)).resolves.toEqual({ received: true });
     expect(shopifyWebhooks.handleOrderCreated).not.toHaveBeenCalled();
-    expect(prisma.webhookInboundEvent.upsert).toHaveBeenCalledWith(
-      expect.objectContaining({ create: expect.objectContaining({ status: 'FAILED' }) }),
+    expect(prisma.webhookInboundEvent.create).toHaveBeenCalledWith(
+      expect.objectContaining({ data: expect.objectContaining({ status: 'PROCESSING' }) }),
+    );
+    expect(prisma.webhookInboundEvent.update).toHaveBeenCalledWith(
+      expect.objectContaining({ data: { status: 'FAILED' } }),
     );
   });
 
@@ -143,6 +155,9 @@ describe('ShopifyWebhookController', () => {
 
     await expect(controller.handle('int_1', req)).resolves.toEqual({ received: true });
     expect(shopifyWebhooks.handleOrderCreated).not.toHaveBeenCalled();
+    expect(prisma.webhookInboundEvent.update).toHaveBeenCalledWith(
+      expect.objectContaining({ data: { status: 'FAILED' } }),
+    );
   });
 
   it('acks 200 and records FAILED when the shop header does not match the stored shop', async () => {
@@ -150,10 +165,8 @@ describe('ShopifyWebhookController', () => {
 
     await expect(controller.handle('int_1', req)).resolves.toEqual({ received: true });
     expect(shopifyWebhooks.handleOrderCreated).not.toHaveBeenCalled();
-    expect(prisma.webhookInboundEvent.upsert).toHaveBeenCalledWith(
-      expect.objectContaining({
-        create: expect.objectContaining({ status: 'FAILED' }),
-      }),
+    expect(prisma.webhookInboundEvent.update).toHaveBeenCalledWith(
+      expect.objectContaining({ data: { status: 'FAILED' } }),
     );
   });
 
@@ -182,22 +195,43 @@ describe('ShopifyWebhookController', () => {
     );
   });
 
-  it('still acks 200 and records FAILED when order processing throws', async () => {
+  it('rejects two concurrent deliveries of the same webhook id from both processing it', async () => {
+    // Simulates the DB unique constraint doing its job: the second
+    // concurrent `create()` for the same externalId loses the race and
+    // gets a P2002, same as it would against a real Postgres instance.
+    prisma.webhookInboundEvent.create
+      .mockResolvedValueOnce({})
+      .mockRejectedValueOnce(DUPLICATE_KEY_ERROR);
+    prisma.webhookInboundEvent.updateMany.mockResolvedValue({ count: 0 }); // not FAILED — second request backs off
+    const req1 = buildRequest({ id: 4001 });
+    const req2 = buildRequest({ id: 4001 });
+
+    const [first, second] = await Promise.all([
+      controller.handle('int_1', req1),
+      controller.handle('int_1', req2),
+    ]);
+
+    expect(first).toEqual({ received: true });
+    expect(second).toEqual({ received: true });
+    expect(shopifyWebhooks.handleOrderCreated).toHaveBeenCalledTimes(1);
+  });
+
+  it('returns 503 (not 200) when order processing throws, so Shopify retries automatically', async () => {
     shopifyWebhooks.handleOrderCreated.mockRejectedValue(new Error('db exploded'));
     const req = buildRequest({ id: 4001 });
 
-    await expect(controller.handle('int_1', req)).resolves.toEqual({ received: true });
+    await expect(controller.handle('int_1', req)).rejects.toBeInstanceOf(ServiceUnavailableException);
     expect(n8nOrchestrator.startOrderValidationRun).not.toHaveBeenCalled();
     expect(prisma.webhookInboundEvent.update).toHaveBeenCalledWith(
       expect.objectContaining({ data: { status: 'FAILED' } }),
     );
   });
 
-  it('still acks 200 and records FAILED when triggering the n8n workflow fails', async () => {
+  it('returns 503 (not 200) when triggering the n8n workflow fails, so Shopify retries automatically', async () => {
     n8nOrchestrator.startOrderValidationRun.mockRejectedValue(new Error('n8n unreachable'));
     const req = buildRequest({ id: 4001 });
 
-    await expect(controller.handle('int_1', req)).resolves.toEqual({ received: true });
+    await expect(controller.handle('int_1', req)).rejects.toBeInstanceOf(ServiceUnavailableException);
     expect(prisma.webhookInboundEvent.update).toHaveBeenCalledWith(
       expect.objectContaining({ data: { status: 'FAILED' } }),
     );

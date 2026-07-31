@@ -9,6 +9,15 @@ import { PrismaService } from '../prisma/prisma.service';
 import { N8nOrchestratorService } from '../internal/n8n-orchestrator.service';
 import { RealtimeService } from '../realtime/realtime.service';
 
+// No pagination UI exists yet — the frontend fetches this once and renders
+// the whole array (see workflow-runs-list.tsx). This cap just bounds the
+// query and response size for a tenant with a very large run history; it
+// isn't a substitute for real pagination if that's ever needed. (Each run's
+// own `steps` is already inherently bounded — at most one row per the 5
+// known STEP_DEFINITIONS keys — so it's the runs themselves that needed a
+// limit, not the include.)
+const MAX_WORKFLOW_RUNS_RETURNED = 100;
+
 @Injectable()
 export class WorkflowRunsService {
   constructor(
@@ -22,6 +31,7 @@ export class WorkflowRunsService {
       where: { tenantId },
       orderBy: { startedAt: 'desc' },
       include: { steps: { orderBy: { sequence: 'asc' } } },
+      take: MAX_WORKFLOW_RUNS_RETURNED,
     });
   }
 

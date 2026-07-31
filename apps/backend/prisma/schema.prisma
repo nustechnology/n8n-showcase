@@ -309,6 +309,7 @@ model Order {
 
   @@unique([tenantId, shopifyOrderId])
   @@index([tenantId, status])
+  @@index([tenantId, createdAt])
   @@map("orders")
 }
 
@@ -352,6 +353,7 @@ model WorkflowRun {
 
   @@index([tenantId])
   @@index([orderId])
+  @@index([tenantId, startedAt])
   @@map("workflow_runs")
 }
 
