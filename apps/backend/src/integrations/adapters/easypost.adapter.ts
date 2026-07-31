@@ -86,12 +86,14 @@ export class EasyPostAdapter implements ApiKeyAdapter {
       phone: order.shippingAddress.phone,
     };
 
+    const shipmentPayload = {
+      shipment: { to_address: toAddress, from_address: fromAddress, parcel: PLACEHOLDER_PARCEL },
+    };
+
     const createRes = await fetch(`${EASYPOST_API_URL}/shipments`, {
       method: 'POST',
       headers,
-      body: JSON.stringify({
-        shipment: { to_address: toAddress, from_address: fromAddress, parcel: PLACEHOLDER_PARCEL },
-      }),
+      body: JSON.stringify(shipmentPayload),
     });
     if (!createRes.ok) {
       throw new BadGatewayException(`EasyPost shipment creation failed: ${await this.describeError(createRes)}`);

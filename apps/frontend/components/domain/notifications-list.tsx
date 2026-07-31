@@ -25,7 +25,7 @@ function NotificationRow({ notification, onRead }: { notification: Notification;
       >
         <span className="flex items-start gap-2">
           {unread && <span className="mt-1.5 size-1.5 shrink-0 rounded-full bg-primary" aria-hidden="true" />}
-          <span className={cn(unread ? "font-medium" : "text-muted-foreground")}>{notification.message}</span>
+          <span className={cn(unread ? "font-medium" : "text-muted-foreground")}>{notification.title}</span>
         </span>
         <span className="shrink-0 text-muted-foreground">{new Date(notification.createdAt).toLocaleString()}</span>
       </button>

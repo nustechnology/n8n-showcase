@@ -89,7 +89,7 @@ describe('ShopifyAdapter', () => {
 
   it('registers a webhook and returns its id', async () => {
     nock('https://test-shop.myshopify.com')
-      .post('/admin/api/2024-10/webhooks.json', {
+      .post('/admin/api/2026-07/webhooks.json', {
         webhook: { topic: 'orders/create', address: 'https://app.example.test/webhooks/shopify/int_1', format: 'json' },
       })
       .matchHeader('X-Shopify-Access-Token', 'shpat_real_token')
@@ -104,7 +104,7 @@ describe('ShopifyAdapter', () => {
   });
 
   it('throws BadGatewayException when webhook registration fails', async () => {
-    nock('https://test-shop.myshopify.com').post('/admin/api/2024-10/webhooks.json').reply(422);
+    nock('https://test-shop.myshopify.com').post('/admin/api/2026-07/webhooks.json').reply(422);
 
     await expect(
       adapter.registerWebhook('token', 'test-shop.myshopify.com', 'https://app.example.test/webhooks/shopify/int_1'),
@@ -113,7 +113,7 @@ describe('ShopifyAdapter', () => {
 
   it('unregisters a webhook by id', async () => {
     nock('https://test-shop.myshopify.com')
-      .delete('/admin/api/2024-10/webhooks/998877.json')
+      .delete('/admin/api/2026-07/webhooks/998877.json')
       .matchHeader('X-Shopify-Access-Token', 'shpat_real_token')
       .reply(200);
 
@@ -124,9 +124,9 @@ describe('ShopifyAdapter', () => {
 
   it('testConnection succeeds when the shop is reachable and the registered webhook still exists', async () => {
     nock('https://test-shop.myshopify.com')
-      .get('/admin/api/2024-10/shop.json')
+      .get('/admin/api/2026-07/shop.json')
       .reply(200, { shop: {} })
-      .get('/admin/api/2024-10/webhooks/998877.json')
+      .get('/admin/api/2026-07/webhooks/998877.json')
       .reply(200, { webhook: { id: 998877 } });
 
     await expect(
@@ -135,7 +135,7 @@ describe('ShopifyAdapter', () => {
   });
 
   it('testConnection throws BadGatewayException on a non-2xx response from shop.json', async () => {
-    nock('https://test-shop.myshopify.com').get('/admin/api/2024-10/shop.json').reply(401);
+    nock('https://test-shop.myshopify.com').get('/admin/api/2026-07/shop.json').reply(401);
 
     await expect(
       adapter.testConnection('bad_token', { shop: 'test-shop.myshopify.com', shopifyWebhookId: '998877' }),
@@ -143,7 +143,7 @@ describe('ShopifyAdapter', () => {
   });
 
   it('testConnection throws when no webhook was ever registered (DEGRADED integration)', async () => {
-    nock('https://test-shop.myshopify.com').get('/admin/api/2024-10/shop.json').reply(200, { shop: {} });
+    nock('https://test-shop.myshopify.com').get('/admin/api/2026-07/shop.json').reply(200, { shop: {} });
 
     await expect(
       adapter.testConnection('shpat_real_token', { shop: 'test-shop.myshopify.com' }),
@@ -152,9 +152,9 @@ describe('ShopifyAdapter', () => {
 
   it('testConnection throws when the registered webhook no longer exists', async () => {
     nock('https://test-shop.myshopify.com')
-      .get('/admin/api/2024-10/shop.json')
+      .get('/admin/api/2026-07/shop.json')
       .reply(200, { shop: {} })
-      .get('/admin/api/2024-10/webhooks/998877.json')
+      .get('/admin/api/2026-07/webhooks/998877.json')
       .reply(404);
 
     await expect(
@@ -162,34 +162,117 @@ describe('ShopifyAdapter', () => {
     ).rejects.toBeInstanceOf(BadGatewayException);
   });
 
-  it('updateOrder writes tracking info to the fulfillments endpoint without notifying the customer', async () => {
-    nock('https://test-shop.myshopify.com')
-      .post('/admin/api/2024-10/orders/4001/fulfillments.json', {
-        fulfillment: {
-          tracking_number: 'TRACK123',
-          tracking_company: 'UPS',
-          notify_customer: false,
+  describe('updateOrder', () => {
+    const GRAPHQL_PATH = '/admin/api/2026-07/graphql.json';
+    const trackingInfo = { trackingNumber: 'TRACK123', carrier: 'UPS', lineItems: [{ id: 555, quantity: 1 }] };
+
+    const isFulfillmentOrdersQuery = (body: { query: string }) => body.query.includes('getFulfillmentOrders');
+    const isFulfillmentCreateMutation = (body: { query: string }) => body.query.includes('mutation fulfillmentCreate');
+
+    const FULFILLMENT_ORDERS_RESPONSE = {
+      data: {
+        order: {
+          fulfillmentOrders: {
+            edges: [
+              {
+                node: {
+                  id: 'gid://shopify/FulfillmentOrder/1',
+                  lineItems: {
+                    edges: [{ node: { id: 'gid://shopify/FulfillmentOrderLineItem/10', remainingQuantity: 2 } }],
+                  },
+                },
+              },
+            ],
+          },
         },
-      })
-      .matchHeader('X-Shopify-Access-Token', 'shpat_real_token')
-      .reply(201, {});
+      },
+    };
 
-    await expect(
-      adapter.updateOrder('shpat_real_token', 'test-shop.myshopify.com', '4001', {
-        trackingNumber: 'TRACK123',
-        carrier: 'UPS',
-      }),
-    ).resolves.toBeUndefined();
-  });
+    it('fetches fulfillment orders, then creates a fulfillment from their remaining quantities, without notifying the customer', async () => {
+      let mutationBody: { query: string; variables: Record<string, unknown> } | undefined;
 
-  it('updateOrder throws BadGatewayException when the fulfillment write fails', async () => {
-    nock('https://test-shop.myshopify.com').post('/admin/api/2024-10/orders/4001/fulfillments.json').reply(422);
+      nock('https://test-shop.myshopify.com')
+        .post(GRAPHQL_PATH, isFulfillmentOrdersQuery)
+        .matchHeader('X-Shopify-Access-Token', 'shpat_real_token')
+        .reply(200, FULFILLMENT_ORDERS_RESPONSE);
 
-    await expect(
-      adapter.updateOrder('shpat_real_token', 'test-shop.myshopify.com', '4001', {
-        trackingNumber: 'TRACK123',
-        carrier: 'UPS',
-      }),
-    ).rejects.toBeInstanceOf(BadGatewayException);
+      nock('https://test-shop.myshopify.com')
+        .post(GRAPHQL_PATH, isFulfillmentCreateMutation)
+        .matchHeader('X-Shopify-Access-Token', 'shpat_real_token')
+        .reply(200, (_uri, body) => {
+          mutationBody = body as typeof mutationBody;
+          return { data: { fulfillmentCreate: { fulfillment: { id: 'gid://shopify/Fulfillment/1' }, userErrors: [] } } };
+        });
+
+      await expect(
+        adapter.updateOrder('shpat_real_token', 'test-shop.myshopify.com', '4001', trackingInfo),
+      ).resolves.toBeUndefined();
+
+      // Fulfillment quantities come from the live fulfillmentOrders query
+      // (remainingQuantity), not from trackingInfo.lineItems — Shopify's
+      // fulfillmentCreate mutation requires fulfillment-order-scoped line
+      // item ids, which only that query can resolve.
+      expect(mutationBody?.variables.fulfillment).toEqual({
+        lineItemsByFulfillmentOrder: [
+          {
+            fulfillmentOrderId: 'gid://shopify/FulfillmentOrder/1',
+            fulfillmentOrderLineItems: [{ id: 'gid://shopify/FulfillmentOrderLineItem/10', quantity: 2 }],
+          },
+        ],
+        trackingInfo: { number: 'TRACK123', company: 'UPS' },
+        notifyCustomer: false,
+      });
+    });
+
+    it('throws BadGatewayException when the order has no fulfillment orders', async () => {
+      nock('https://test-shop.myshopify.com')
+        .post(GRAPHQL_PATH, isFulfillmentOrdersQuery)
+        .reply(200, { data: { order: { fulfillmentOrders: { edges: [] } } } });
+
+      await expect(
+        adapter.updateOrder('shpat_real_token', 'test-shop.myshopify.com', '4001', trackingInfo),
+      ).rejects.toBeInstanceOf(BadGatewayException);
+    });
+
+    it('throws BadGatewayException when the fulfillment orders query fails', async () => {
+      nock('https://test-shop.myshopify.com').post(GRAPHQL_PATH, isFulfillmentOrdersQuery).reply(500);
+
+      await expect(
+        adapter.updateOrder('shpat_real_token', 'test-shop.myshopify.com', '4001', trackingInfo),
+      ).rejects.toBeInstanceOf(BadGatewayException);
+    });
+
+    it('throws BadGatewayException when fulfillmentCreate returns userErrors', async () => {
+      nock('https://test-shop.myshopify.com')
+        .post(GRAPHQL_PATH, isFulfillmentOrdersQuery)
+        .reply(200, FULFILLMENT_ORDERS_RESPONSE);
+
+      nock('https://test-shop.myshopify.com')
+        .post(GRAPHQL_PATH, isFulfillmentCreateMutation)
+        .reply(200, {
+          data: {
+            fulfillmentCreate: {
+              fulfillment: null,
+              userErrors: [{ field: 'trackingInfo', message: 'is invalid' }],
+            },
+          },
+        });
+
+      await expect(
+        adapter.updateOrder('shpat_real_token', 'test-shop.myshopify.com', '4001', trackingInfo),
+      ).rejects.toBeInstanceOf(BadGatewayException);
+    });
+
+    it('throws BadGatewayException when the fulfillmentCreate request fails', async () => {
+      nock('https://test-shop.myshopify.com')
+        .post(GRAPHQL_PATH, isFulfillmentOrdersQuery)
+        .reply(200, FULFILLMENT_ORDERS_RESPONSE);
+
+      nock('https://test-shop.myshopify.com').post(GRAPHQL_PATH, isFulfillmentCreateMutation).reply(422);
+
+      await expect(
+        adapter.updateOrder('shpat_real_token', 'test-shop.myshopify.com', '4001', trackingInfo),
+      ).rejects.toBeInstanceOf(BadGatewayException);
+    });
   });
 });

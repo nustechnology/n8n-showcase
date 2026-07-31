@@ -40,6 +40,26 @@ export const PROVIDER_CATALOG: ProviderMeta[] = [
     authMethod: "oauth",
     connectGuide: [
       {
+        title: "Enable the required API scopes first",
+        detail: (
+          <>
+            In{" "}
+            <a
+              href="https://dev.shopify.com/dashboard"
+              target="_blank"
+              rel="noreferrer"
+            >
+              dev.shopify.com/dashboard
+            </a>
+            : <strong>Apps → this app → Versions → Create version</strong>, then enable exactly{" "}
+            <code>read_orders</code>, <code>read_fulfillments</code>, <code>write_fulfillments</code>,{" "}
+            <code>read_locations</code>, <code>read_merchant_managed_fulfillment_orders</code>, and{" "}
+            <code>write_merchant_managed_fulfillment_orders</code>. Release the version — a scope isn't active
+            until the version is released.
+          </>
+        ),
+      },
+      {
         title: "Find your store's admin domain",
         detail: 'Log in to Shopify admin — the URL is your shop domain, e.g. "yourstore.myshopify.com".',
       },
@@ -54,6 +74,10 @@ export const PROVIDER_CATALOG: ProviderMeta[] = [
       {
         title: "If the badge reads \"Needs attention\" afterward",
         detail: 'That means Protected Customer Data access is still needed — the "How to fix" link next to the error explains the extra step.',
+      },
+      {
+        title: "Already connected and just added a scope?",
+        detail: "OAuth grants aren't retroactive — an existing connection keeps whatever scopes it was approved with. Disconnect and reconnect here to pick up a newly released scope.",
       },
     ],
   },

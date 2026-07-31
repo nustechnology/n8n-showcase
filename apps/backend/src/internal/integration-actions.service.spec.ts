@@ -1,4 +1,4 @@
-import { UnauthorizedException } from '@nestjs/common';
+import { NotFoundException, UnauthorizedException } from '@nestjs/common';
 import { Test } from '@nestjs/testing';
 
 import { PrismaService } from '../prisma/prisma.service';
@@ -9,6 +9,20 @@ import { CircuitOpenException } from '../common/circuit-breaker/circuit-open.exc
 import { IntegrationsService } from '../integrations/integrations.service';
 
 import { IntegrationActionsService } from './integration-actions.service';
+
+// Kept for manually re-testing the EasyPost flow end-to-end against an
+// order whose Shopify payload has no real shipping address — createShipment()
+// used to silently fall back to this and ship there; it now throws instead
+// (see integration-actions.service.ts). Wire this back in by hand if that
+// kind of manual testing is needed again, don't restore the automatic fallback.
+const LOCAL_TEST_FALLBACK_ADDRESS = {
+  name: 'Test Customer',
+  street1: '164 Townsend St',
+  city: 'San Francisco',
+  state: 'CA',
+  postalCode: '94107',
+  country: 'US',
+};
 
 describe('IntegrationActionsService', () => {
   let service: IntegrationActionsService;
@@ -163,7 +177,7 @@ describe('IntegrationActionsService', () => {
         tenantId: 't_1',
         shopifyOrderId: '4001',
         rawPayload: {
-          shipping_address: { name: 'Ada Lovelace', city: 'London', country: 'GB' },
+          shipping_address: { name: 'Ada Lovelace', address1: '10 Downing St', city: 'London', zip: 'SW1A 2AA', country: 'GB' },
         },
       });
       prisma.integration.findFirst.mockResolvedValue({ provider: 'EASYPOST' });
@@ -191,11 +205,37 @@ describe('IntegrationActionsService', () => {
       );
       expect(result).toEqual({ trackingNumber: 'TRACK1', carrier: 'USPS', shipmentId: '999' });
     });
+
+    it('throws NotFoundException instead of shipping when the order has no complete shipping address', async () => {
+      prisma.order.findFirst.mockResolvedValue({
+        id: 'o_1',
+        tenantId: 't_1',
+        shopifyOrderId: '4001',
+        rawPayload: {
+          shipping_address: { name: 'Ada Lovelace', city: 'London', country: 'GB' },
+        },
+      });
+      prisma.integration.findFirst.mockResolvedValue({ provider: 'EASYPOST' });
+      integrations.getDecryptedCredential.mockResolvedValue({
+        integrationId: 'int_2',
+        secret: 'ep-api-key',
+        config: { fromAddress: LOCAL_TEST_FALLBACK_ADDRESS },
+      });
+      integrations.getAdapter.mockReturnValue(easyPostAdapter);
+
+      await expect(service.createShipment('t_1', 'o_1')).rejects.toBeInstanceOf(NotFoundException);
+      expect(easyPostAdapter.createShipment).not.toHaveBeenCalled();
+    });
   });
 
   describe('updateShopifyOrder', () => {
     it('calls the Shopify adapter with the shop from config and the order tracking info', async () => {
-      prisma.order.findFirst.mockResolvedValue({ id: 'o_1', tenantId: 't_1', shopifyOrderId: '4001' });
+      prisma.order.findFirst.mockResolvedValue({
+        id: 'o_1',
+        tenantId: 't_1',
+        shopifyOrderId: '4001',
+        rawPayload: { line_items: [{ id: 111, sku: 'SKU-1', quantity: 2 }, { id: 222, sku: 'SKU-2', quantity: 1 }] },
+      });
       integrations.getDecryptedCredential.mockResolvedValue({
         integrationId: 'int_3',
         secret: 'shop-token',
@@ -208,6 +248,7 @@ describe('IntegrationActionsService', () => {
       expect(shopifyAdapter.updateOrder).toHaveBeenCalledWith('shop-token', 'acme.myshopify.com', '4001', {
         trackingNumber: 'TRACK1',
         carrier: 'UPS',
+        lineItems: [{ id: 111, quantity: 2 }, { id: 222, quantity: 1 }],
       });
     });
   });

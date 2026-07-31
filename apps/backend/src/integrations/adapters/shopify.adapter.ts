@@ -5,7 +5,7 @@ import { IntegrationProvider } from '@prisma/client';
 
 import { OAuthAdapter } from '../integration-adapter.interface';
 
-const SHOPIFY_API_VERSION = '2024-10';
+const SHOPIFY_API_VERSION = '2026-07';
 
 @Injectable()
 export class ShopifyAdapter implements OAuthAdapter {
@@ -113,29 +113,160 @@ export class ShopifyAdapter implements OAuthAdapter {
     token: string,
     shop: string,
     shopifyOrderId: string,
-    trackingInfo: { trackingNumber: string; carrier: string },
+    trackingInfo: { trackingNumber: string; carrier: string; lineItems: { id: number; quantity: number }[] },
   ): Promise<void> {
+    const gidOrder = `gid://shopify/Order/${shopifyOrderId}`;
+
+    const fulfillmentOrders = await this.fetchFulfillmentOrders(token, shop, gidOrder);
+    if (!fulfillmentOrders.length) {
+      throw new BadGatewayException('Order has no fulfillment orders');
+    }
+
+    const lineItemsByFulfillmentOrder = fulfillmentOrders.map((fo) => ({
+      fulfillmentOrderId: fo.id,
+      fulfillmentOrderLineItems: fo.lineItems.map((li) => ({
+        id: li.id,
+        quantity: li.quantity,
+      })),
+    }));
+
+    const query = `
+      mutation fulfillmentCreate($fulfillment: FulfillmentInput!) {
+        fulfillmentCreate(fulfillment: $fulfillment) {
+          fulfillment { id status }
+          userErrors { field message }
+        }
+      }
+    `;
+    const variables = {
+      fulfillment: {
+        lineItemsByFulfillmentOrder,
+        trackingInfo: {
+          number: trackingInfo.trackingNumber,
+          company: trackingInfo.carrier,
+        },
+        notifyCustomer: false,
+      },
+    };
+
     const res = await fetch(
-      `https://${shop}/admin/api/${SHOPIFY_API_VERSION}/orders/${shopifyOrderId}/fulfillments.json`,
+      `https://${shop}/admin/api/${SHOPIFY_API_VERSION}/graphql.json`,
       {
         method: 'POST',
         headers: { 'content-type': 'application/json', 'X-Shopify-Access-Token': token },
-        body: JSON.stringify({
-          fulfillment: {
-            tracking_number: trackingInfo.trackingNumber,
-            tracking_company: trackingInfo.carrier,
-            // Customer notification is its own separate pipeline step
-            // (the Slack/customer-messaging endpoint) — this call's job is
-            // strictly the tracking writeback, not triggering Shopify's own
-            // customer email on top of it.
-            notify_customer: false,
-          },
-        }),
+        body: JSON.stringify({ query, variables }),
       },
     );
     if (!res.ok) {
       throw new BadGatewayException(`Shopify fulfillment update failed: ${res.status}`);
     }
+
+    const result = (await res.json()) as {
+      data?: { fulfillmentCreate?: { fulfillment?: unknown; userErrors?: { field: string; message: string }[] } };
+      errors?: { message: string }[];
+    };
+
+    const userErrors = result.data?.fulfillmentCreate?.userErrors;
+    const graphqlErrors = result.errors;
+    if (userErrors?.length) {
+      throw new BadGatewayException(
+        `Shopify fulfillment create failed: ${userErrors.map((e) => `${e.field}: ${e.message}`).join('; ')}`,
+      );
+    }
+    if (graphqlErrors?.length) {
+      throw new BadGatewayException(
+        `Shopify GraphQL error: ${graphqlErrors.map((e) => e.message).join('; ')}`,
+      );
+    }
+  }
+
+  private async fetchFulfillmentOrders(
+    token: string,
+    shop: string,
+    gidOrder: string,
+  ): Promise<{ id: string; lineItems: { id: string; quantity: number }[] }[]> {
+    const query = `
+      query getFulfillmentOrders($orderId: ID!) {
+        order(id: $orderId) {
+          fulfillmentOrders(first: 10) {
+            edges {
+              node {
+                id
+                lineItems(first: 10) {
+                  edges {
+                    node {
+                      id
+                      remainingQuantity
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    `;
+    const res = await fetch(
+      `https://${shop}/admin/api/${SHOPIFY_API_VERSION}/graphql.json`,
+      {
+        method: 'POST',
+        headers: { 'content-type': 'application/json', 'X-Shopify-Access-Token': token },
+        body: JSON.stringify({ query, variables: { orderId: gidOrder } }),
+      },
+    );
+    if (!res.ok) {
+      const errorBody = await res.text().catch(() => '');
+      throw new BadGatewayException(`Shopify fulfillment orders query failed: ${res.status} — ${errorBody.slice(0, 300)}`);
+    }
+    const result = (await res.json()) as {
+      data?: {
+        order?: {
+          fulfillmentOrders?: {
+            edges?: {
+              node: {
+                id: string;
+                lineItems?: {
+                  edges?: {
+                    node: { id: string; remainingQuantity: number };
+                  }[];
+                };
+              };
+            }[];
+          };
+        };
+      };
+      errors?: { message: string }[];
+    };
+
+    if (result.errors?.length) {
+      throw new BadGatewayException(
+        `Shopify fulfillment orders query error: ${result.errors.map((e) => e.message).join('; ')}`,
+      );
+    }
+
+    const orders = result.data?.order?.fulfillmentOrders?.edges ?? [];
+    return orders.map((edge) => ({
+      id: edge.node.id,
+      lineItems: (edge.node.lineItems?.edges ?? []).map((li) => ({
+        id: li.node.id,
+        quantity: Number(li.node.remainingQuantity),
+      })),
+    }));
+  }
+
+  private async fetchFirstLocationId(token: string, shop: string): Promise<number> {
+    const res = await fetch(
+      `https://${shop}/admin/api/${SHOPIFY_API_VERSION}/locations.json`,
+      { headers: { 'X-Shopify-Access-Token': token } },
+    );
+    if (!res.ok) {
+      throw new BadGatewayException(`Shopify locations fetch failed: ${res.status}`);
+    }
+    const data = (await res.json()) as { locations: { id: number }[] };
+    if (!data.locations?.length) {
+      throw new BadGatewayException('Shopify store has no locations configured');
+    }
+    return data.locations[0].id;
   }
 
   async testConnection(credential: string, config: Record<string, unknown>): Promise<void> {

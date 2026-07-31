@@ -7,7 +7,8 @@ export const notificationSchema = z.object({
   id: z.string(),
   tenantId: z.string(),
   type: z.string(),
-  message: z.string(),
+  title: z.string(),
+  body: z.string().nullable(),
   readAt: z.string().nullable(),
   createdAt: z.string(),
 });

@@ -70,7 +70,7 @@ export function ShopifyProtectedDataDialog() {
             connect time.
           </DialogDescription>
         </DialogHeader>
-        <ol className="space-y-3">
+        <ol className="min-w-0 space-y-3">
           {STEPS.map((step, i) => (
             <li
               key={step.title}
@@ -79,9 +79,9 @@ export function ShopifyProtectedDataDialog() {
               <span className="flex size-5 shrink-0 items-center justify-center rounded-full bg-muted text-sm font-medium">
                 {i + 1}
               </span>
-              <div>
+              <div className="min-w-0">
                 <p className="font-medium">{step.title}</p>
-                <p className="text-muted-foreground">{step.detail}</p>
+                <p className="text-muted-foreground break-words">{step.detail}</p>
               </div>
             </li>
           ))}

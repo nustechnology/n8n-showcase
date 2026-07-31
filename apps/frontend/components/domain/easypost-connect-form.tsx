@@ -74,6 +74,18 @@ export function EasyPostConnectForm() {
           <p className="text-sm text-muted-foreground">
             EasyPost requires an origin address on every shipment — collected once here, not re-asked per order.
           </p>
+          <p className="text-sm text-muted-foreground">
+            Use a verified sender address from your{" "}
+            <a
+              href="https://app.easypost.com/account/shipping-settings"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="underline decoration-muted-foreground/40 underline-offset-2 hover:decoration-muted-foreground"
+            >
+              EasyPost shipping settings
+            </a>
+            . A random address will cause shipments to fail with no available rates.
+          </p>
         </div>
 
         <div className="grid grid-cols-2 gap-3">

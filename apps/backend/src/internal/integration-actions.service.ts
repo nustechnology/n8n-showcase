@@ -189,17 +189,22 @@ export class IntegrationActionsService {
     }
 
     const fromAddress = config.fromAddress as Record<string, unknown>;
+    const shippingAddress = payload.shipping_address;
+    const hasCoreAddress = !!(shippingAddress?.address1 && shippingAddress?.city && shippingAddress?.zip);
+    if (!hasCoreAddress) {
+      throw new NotFoundException('Order has no complete shipping address (address1/city/zip)');
+    }
     const orderInput: ShippingOrderInput = {
       shopifyOrderId: order.shopifyOrderId,
       shippingAddress: {
-        name: payload.shipping_address?.name ?? undefined,
-        street1: payload.shipping_address?.address1 ?? undefined,
-        street2: payload.shipping_address?.address2 ?? undefined,
-        city: payload.shipping_address?.city ?? undefined,
-        state: payload.shipping_address?.province ?? undefined,
-        postalCode: payload.shipping_address?.zip ?? undefined,
-        country: payload.shipping_address?.country ?? undefined,
-        phone: payload.shipping_address?.phone ?? undefined,
+        name: shippingAddress.name ?? undefined,
+        street1: shippingAddress.address1 ?? undefined,
+        street2: shippingAddress.address2 ?? undefined,
+        city: shippingAddress.city ?? undefined,
+        state: shippingAddress.province ?? undefined,
+        postalCode: shippingAddress.zip ?? undefined,
+        country: shippingAddress.country ?? undefined,
+        phone: shippingAddress.phone ?? undefined,
       },
     };
 
@@ -215,6 +220,11 @@ export class IntegrationActionsService {
     carrier: string,
   ): Promise<void> {
     const order = await this.getOrderOrThrow(tenantId, orderId);
+    const payload = order.rawPayload as unknown as ShopifyOrderPayload;
+    const lineItems = (payload.line_items ?? []).map((item) => ({
+      id: item.id!,
+      quantity: item.quantity,
+    }));
     const { secret, config } = await this.integrations.getDecryptedCredential(
       tenantId,
       IntegrationProvider.SHOPIFY,
@@ -223,7 +233,7 @@ export class IntegrationActionsService {
     const shop = config.shop as string;
 
     await this.circuitBreaker.fire(IntegrationProvider.SHOPIFY, () =>
-      adapter.updateOrder(secret, shop, order.shopifyOrderId, { trackingNumber, carrier }),
+      adapter.updateOrder(secret, shop, order.shopifyOrderId, { trackingNumber, carrier, lineItems }),
     );
   }
 
@@ -305,7 +315,7 @@ export class IntegrationActionsService {
   private extractLineItems(order: Order): { sku: string; quantity: number }[] {
     const payload = order.rawPayload as unknown as ShopifyOrderPayload;
     return (payload.line_items ?? [])
-      .filter((item): item is { sku: string; name?: string | null; quantity: number } => !!item.sku)
+      .filter((item): item is { id: number; sku: string; name?: string | null; quantity: number } => !!item.sku)
       .map((item) => ({ sku: item.sku, quantity: item.quantity }));
   }
 }

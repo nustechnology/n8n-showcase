@@ -17,6 +17,7 @@ export interface ShopifyOrderPayload {
     last_name?: string | null;
   } | null;
   line_items?: {
+    id: number;
     sku?: string | null;
     name?: string | null;
     quantity: number;
