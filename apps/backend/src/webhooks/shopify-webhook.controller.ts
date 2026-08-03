@@ -26,7 +26,7 @@ import { N8nOrchestratorService } from '../internal/n8n-orchestrator.service';
 
 import { RealtimeService } from '../realtime/realtime.service';
 
-import { ShopifyOrderPayload } from './shopify-order-payload.types';
+import { ShopifyCheckoutPayload, ShopifyOrderPayload } from './shopify-order-payload.types';
 import { ShopifyWebhookService } from './shopify-webhook.service';
 import { claimWebhookInboundEvent } from './webhook-inbox-claim.util';
 
@@ -84,16 +84,9 @@ export class ShopifyWebhookController {
       throw new BadRequestException('Invalid webhook signature');
     }
 
-    const payload = JSON.parse(req.rawBody.toString('utf8')) as ShopifyOrderPayload;
+    const payload = JSON.parse(req.rawBody.toString('utf8')) as ShopifyOrderPayload | ShopifyCheckoutPayload;
     const integration = await this.prisma.integration.findUnique({ where: { id: integrationId } });
 
-    // Claims the (source, externalId) row atomically before any business
-    // logic runs — closes the race where two concurrent deliveries of the
-    // same webhookId both pass a check-then-act gap and both process the
-    // order. If we lose the claim, either another request already handled
-    // (or is handling) this exact event, or it's already PROCESSED/
-    // PROCESSING and not eligible for a FAILED-only retry — either way,
-    // nothing to do here.
     const claimed = await claimWebhookInboundEvent(this.prisma, {
       tenantId: integration?.tenantId,
       source: 'SHOPIFY',
@@ -105,14 +98,6 @@ export class ShopifyWebhookController {
       return { received: true };
     }
 
-    // A miss, a not-ACTIVE integration, or a shop header that doesn't
-    // match what's on file are all handled the same way: ack 200, record
-    // FAILED, never 500 — Shopify retries a non-2xx indefinitely, and any
-    // of these can legitimately happen (e.g. a disconnected integration's
-    // Shopify-side subscription isn't always cleaned up in time). These
-    // are permanent until the tenant fixes their config, so unlike the
-    // processing failure below, a retry genuinely wouldn't help — 200
-    // stays correct here.
     let failureReason: string | null = null;
     if (!integration) {
       failureReason = 'No integration found for this webhook URL';
@@ -131,45 +116,68 @@ export class ShopifyWebhookController {
       return { received: true };
     }
 
+    const isCheckoutPayload = (p: ShopifyOrderPayload | ShopifyCheckoutPayload): p is ShopifyCheckoutPayload =>
+      'token' in p && !('name' in p);
+
     try {
-      const order = await this.shopifyWebhooks.handleOrderCreated(integration, payload);
-      this.realtime.publishOrderUpdate({
-        tenantId: integration.tenantId,
-        orderId: order.id,
-        status: order.status,
-        type: 'order_created',
-      });
-      // Kicks off n8n's order-validation workflow — a failure here (n8n
-      // unreachable, etc.) is deliberately treated the same as a failure to
-      // write the order itself: the row below still lands as FAILED, not a
-      // silently-swallowed 200, since the order would otherwise sit at
-      // RECEIVED forever with nothing to surface that.
-      await this.n8nOrchestrator.startOrderValidationRun({
-        tenantId: integration.tenantId,
-        orderId: order.id,
-        correlationId: randomUUID(),
-      });
-      await this.prisma.webhookInboundEvent.update({
-        where: { source_externalId: { source: 'SHOPIFY', externalId: webhookIdHeader } },
-        data: { status: 'PROCESSED', processedAt: new Date() },
-      });
+      await this.processPayload(integration, payload, webhookIdHeader, isCheckoutPayload(payload));
     } catch (error) {
       this.logger.error(
-        `Failed to process Shopify order webhook for integration ${integrationId}`,
+        `Failed to process Shopify webhook for integration ${integrationId}`,
         error as Error,
       );
       await this.prisma.webhookInboundEvent.update({
         where: { source_externalId: { source: 'SHOPIFY', externalId: webhookIdHeader } },
         data: { status: 'FAILED' },
       });
-      // Unlike the rejection branches above, this failure (DB/n8n
-      // unreachable, etc.) is genuinely transient — a 503 lets Shopify's
-      // own automatic redelivery retry it, instead of requiring a manual
-      // resend from the Shopify dashboard for something that might just
-      // clear up on its own.
-      throw new ServiceUnavailableException('Failed to process Shopify order webhook');
+      throw new ServiceUnavailableException('Failed to process Shopify webhook');
     }
 
     return { received: true };
+  }
+
+  private async processPayload(
+    integration: NonNullable<Awaited<ReturnType<PrismaService['integration']['findUnique']>>>,
+    payload: ShopifyOrderPayload | ShopifyCheckoutPayload,
+    webhookIdHeader: string,
+    isCheckout: boolean,
+  ): Promise<void> {
+    if (isCheckout) {
+      const checkout = payload as ShopifyCheckoutPayload;
+      const items = (checkout.line_items ?? []).map((item) => ({
+        name: item.title ?? 'Unknown item',
+        quantity: item.quantity,
+      }));
+
+      await this.n8nOrchestrator.startCartReminderRun({
+        tenantId: integration.tenantId,
+        checkoutToken: checkout.token,
+        customerEmail: checkout.email ?? checkout.customer?.email ?? null,
+        customerName: checkout.customer
+          ? [checkout.customer.first_name, checkout.customer.last_name].filter(Boolean).join(' ') || null
+          : null,
+        items,
+        correlationId: randomUUID(),
+      });
+    } else {
+      const orderPayload = payload as ShopifyOrderPayload;
+      const order = await this.shopifyWebhooks.handleOrderCreated(integration, orderPayload);
+      this.realtime.publishOrderUpdate({
+        tenantId: integration.tenantId,
+        orderId: order.id,
+        status: order.status,
+        type: 'order_created',
+      });
+      await this.n8nOrchestrator.startOrderValidationRun({
+        tenantId: integration.tenantId,
+        orderId: order.id,
+        correlationId: randomUUID(),
+      });
+    }
+
+    await this.prisma.webhookInboundEvent.update({
+      where: { source_externalId: { source: 'SHOPIFY', externalId: webhookIdHeader } },
+      data: { status: 'PROCESSED', processedAt: new Date() },
+    });
   }
 }

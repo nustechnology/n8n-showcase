@@ -97,6 +97,25 @@ export class ShopifyAdapter implements OAuthAdapter {
     return { webhookId: String(data.webhook.id) };
   }
 
+  async registerCheckoutWebhook(
+    token: string,
+    shop: string,
+    callbackUrl: string,
+  ): Promise<{ webhookId: string }> {
+    const res = await fetchWithTimeout(`https://${shop}/admin/api/${SHOPIFY_API_VERSION}/webhooks.json`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', 'X-Shopify-Access-Token': token },
+      body: JSON.stringify({
+        webhook: { topic: 'checkouts/create', address: callbackUrl, format: 'json' },
+      }),
+    });
+    if (!res.ok) {
+      throw new BadGatewayException(`Shopify checkout webhook registration failed: ${res.status}`);
+    }
+    const data = (await res.json()) as { webhook: { id: number } };
+    return { webhookId: String(data.webhook.id) };
+  }
+
   async unregisterWebhook(token: string, shop: string, webhookId: string): Promise<void> {
     const res = await fetchWithTimeout(
       `https://${shop}/admin/api/${SHOPIFY_API_VERSION}/webhooks/${webhookId}.json`,
@@ -105,6 +124,28 @@ export class ShopifyAdapter implements OAuthAdapter {
     if (!res.ok) {
       throw new BadGatewayException(`Shopify webhook deletion failed: ${res.status}`);
     }
+  }
+
+  async checkCheckoutOrder(
+    token: string,
+    shop: string,
+    checkoutToken: string,
+  ): Promise<{ orderFound: boolean; orderId?: string }> {
+    const res = await fetchWithTimeout(
+      `https://${shop}/admin/api/${SHOPIFY_API_VERSION}/checkouts/${checkoutToken}/order_id.json`,
+      { headers: { 'X-Shopify-Access-Token': token } },
+    );
+    if (res.status === 404) {
+      return { orderFound: false };
+    }
+    if (!res.ok) {
+      throw new BadGatewayException(`Shopify checkout order lookup failed: ${res.status}`);
+    }
+    const data = (await res.json()) as { order_id: number | null };
+    if (!data.order_id) {
+      return { orderFound: false };
+    }
+    return { orderFound: true, orderId: String(data.order_id) };
   }
 
   // Writes fulfillment/tracking info back into Shopify — scoped in the
@@ -302,6 +343,19 @@ export class ShopifyAdapter implements OAuthAdapter {
       throw new BadGatewayException(
         'Shopify credentials are valid, but the order webhook is missing or was removed — disconnect and reconnect to finish setup.',
       );
+    }
+
+    const checkoutWebhookId = config.shopifyCheckoutWebhookId as string | undefined;
+    if (checkoutWebhookId) {
+      const checkoutWebhookRes = await fetchWithTimeout(
+        `https://${shop}/admin/api/${SHOPIFY_API_VERSION}/webhooks/${checkoutWebhookId}.json`,
+        { headers: { 'X-Shopify-Access-Token': credential } },
+      );
+      if (!checkoutWebhookRes.ok) {
+        throw new BadGatewayException(
+          'Shopify credentials are valid, but the checkout webhook is missing or was removed — disconnect and reconnect to finish setup.',
+        );
+      }
     }
   }
 }

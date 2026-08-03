@@ -35,8 +35,12 @@ function aggregateGroupStatus(statuses: IntegrationStatus[]): IntegrationStatus 
   return undefined;
 }
 
-export function IntegrationsList({ workspaceSlug }: { workspaceSlug: string }) {
+export function IntegrationsList({ workspaceSlug, workflow }: { workspaceSlug: string; workflow: string }) {
   const { data: integrations, isPending, isError, error } = useIntegrations();
+
+  const filteredCatalog = PROVIDER_CATALOG.filter(
+    (meta) => !meta.workflows || meta.workflows.includes(workflow),
+  );
 
   const groupIntegrations = new Map(GROUPS.map((g) => {
     const matching = integrations?.filter((i) => (g.providers as readonly string[]).includes(i.provider)) ?? [];
@@ -47,7 +51,7 @@ export function IntegrationsList({ workspaceSlug }: { workspaceSlug: string }) {
   if (isPending) {
     return (
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
-        {PROVIDER_CATALOG.map((meta) => (
+        {filteredCatalog.map((meta) => (
           <Skeleton key={meta.provider} className="h-26 rounded-lg" />
         ))}
       </div>
@@ -68,7 +72,7 @@ export function IntegrationsList({ workspaceSlug }: { workspaceSlug: string }) {
 
   return (
     <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
-      {PROVIDER_CATALOG.map((meta) => {
+      {filteredCatalog.map((meta) => {
         const groupIntegration = groupIntegrations.get(meta.provider);
         return (
           <IntegrationCard

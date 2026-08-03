@@ -7,6 +7,8 @@ import { InternalThrottlerGuard } from '../common/rate-limit/internal-throttler.
 import { IntegrationActionsService } from './integration-actions.service';
 
 import {
+  CheckCheckoutOrderInput,
+  CheckCheckoutOrderSchema,
   CheckInventoryInput,
   CheckInventorySchema,
   CreateShipmentInput,
@@ -91,5 +93,13 @@ export class IntegrationActionsController {
   ): Promise<{ success: true }> {
     await this.actions.sendResendEmail(body.tenantId, body.orderId);
     return { success: true };
+  }
+
+  @Post('shopify/check-checkout-order')
+  @HttpCode(200)
+  async checkCheckoutOrder(
+    @Body(new ZodValidationPipe(CheckCheckoutOrderSchema)) body: CheckCheckoutOrderInput,
+  ): Promise<{ orderFound: boolean; orderId?: string }> {
+    return this.actions.checkCheckoutOrder(body.tenantId, body.checkoutToken);
   }
 }

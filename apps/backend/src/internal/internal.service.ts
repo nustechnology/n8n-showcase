@@ -43,19 +43,21 @@ export class InternalService {
   ) {}
 
   async createWorkflowRun(input: CreateWorkflowRunInput): Promise<{ workflowRunId: string }> {
-    const order = await this.prisma.order.findFirst({
-      where: { id: input.orderId, tenantId: input.tenantId },
-    });
-    if (!order) {
-      throw new NotFoundException('Order not found for this tenant');
+    if (input.orderId) {
+      const order = await this.prisma.order.findFirst({
+        where: { id: input.orderId, tenantId: input.tenantId },
+      });
+      if (!order) {
+        throw new NotFoundException('Order not found for this tenant');
+      }
     }
 
     const run = await this.prisma.workflowRun.create({
       data: {
         tenantId: input.tenantId,
-        orderId: input.orderId,
+        orderId: input.orderId ?? null,
         correlationId: input.correlationId,
-        workflowName: 'order-validation',
+        workflowName: input.workflowName ?? 'order-validation',
         status: 'RUNNING',
       },
     });

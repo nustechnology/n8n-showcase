@@ -301,6 +301,22 @@ export class IntegrationActionsService {
     );
   }
 
+  async checkCheckoutOrder(
+    tenantId: string,
+    checkoutToken: string,
+  ): Promise<{ orderFound: boolean; orderId?: string }> {
+    const { secret, config } = await this.integrations.getDecryptedCredential(
+      tenantId,
+      IntegrationProvider.SHOPIFY,
+    );
+    const adapter = this.integrations.getAdapter(IntegrationProvider.SHOPIFY) as ShopifyAdapter;
+    const shop = config.shop as string;
+
+    return this.circuitBreaker.fire(IntegrationProvider.SHOPIFY, () =>
+      adapter.checkCheckoutOrder(secret, shop, checkoutToken),
+    );
+  }
+
   private async getOrderOrThrow(tenantId: string, orderId: string): Promise<Order> {
     const order = await this.prisma.order.findFirst({ where: { id: orderId, tenantId } });
     if (!order) {

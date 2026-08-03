@@ -73,11 +73,16 @@ export function WorkflowRunDetail({ workspaceSlug, runId }: { workspaceSlug: str
     });
   }
 
+  const descriptionByWorkflow: Record<string, string> = {
+    "order-validation": "Shopify Order → AI Validation → Inventory Check → Shipment → Notification.",
+    "cart-reminder": "Shopify Checkout → Wait → Check Order → Discord Reminder.",
+  };
+
   return (
     <>
       <PageHeader
         title={data.workflowName}
-        description="Shopify Order → AI Validation → Inventory Check → Shipment → Notification."
+        description={descriptionByWorkflow[data.workflowName] ?? "Automation pipeline run."}
         action={
           <StatusBadge
             tone={isRetrying ? "running" : tone}

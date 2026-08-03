@@ -1,0 +1,351 @@
+{
+  "name": "Cart Reminder",
+  "nodes": [
+    {
+      "id": "1a1b2c3d-0001-4d12-8a1f-d067ca8b4ea2",
+      "name": "Cart Reminder Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        250,
+        300
+      ],
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "cart-reminder",
+        "authentication": "headerAuth",
+        "responseMode": "onReceived",
+        "options": {}
+      },
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "R8ikTjUCKdJP6lBR",
+          "name": "Backend Internal Token"
+        }
+      },
+      "webhookId": "a1b2c3d4-e5f6-4a7b-8c9d-0e1f2a3b4c5d"
+    },
+    {
+      "id": "2a2b3c4d-0002-4d12-8a1f-d067ca8b4ea2",
+      "name": "Open Workflow Run",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        500,
+        300
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "http://host.docker.internal:3000/internal/workflow-runs",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ tenantId: $json.body.tenantId, orderId: null, workflowName: 'cart-reminder', correlationId: $json.body.correlationId }) }}",
+        "options": {}
+      },
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "R8ikTjUCKdJP6lBR",
+          "name": "Backend Internal Token"
+        }
+      },
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 1000
+    },
+    {
+      "id": "3a3b4c5d-0003-4d12-8a1f-d067ca8b4ea2",
+      "name": "Wait 2 Minutes",
+      "type": "n8n-nodes-base.wait",
+      "typeVersion": 1,
+      "position": [
+        750,
+        300
+      ],
+      "parameters": {
+        "amount": 2,
+        "unit": "minutes"
+      }
+    },
+    {
+      "id": "4a4b5c6d-0004-4d12-8a1f-d067ca8b4ea2",
+      "name": "Check Order Exists",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1000,
+        300
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "http://host.docker.internal:3000/internal/integrations/shopify/check-checkout-order",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ tenantId: $('Cart Reminder Webhook').item.json.body.tenantId, checkoutToken: $('Cart Reminder Webhook').item.json.body.checkoutToken }) }}",
+        "options": {}
+      },
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "R8ikTjUCKdJP6lBR",
+          "name": "Backend Internal Token"
+        }
+      },
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 5000
+    },
+    {
+      "id": "5a5b6c7d-0005-4d12-8a1f-d067ca8b4ea2",
+      "name": "Record Check Order Step",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1250,
+        300
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "=http://host.docker.internal:3000/internal/workflow-runs/{{ $('Open Workflow Run').item.json.workflowRunId }}/steps",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ stepKey: 'check_checkout_order', status: 'succeeded' }) }}",
+        "options": {}
+      },
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "R8ikTjUCKdJP6lBR",
+          "name": "Backend Internal Token"
+        }
+      },
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 1000
+    },
+    {
+      "id": "6a6b7c8d-0006-4d12-8a1f-d067ca8b4ea2",
+      "name": "IF Order Not Found",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        1500,
+        300
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "a1b2c3d4-e5f6-4a7b-8c9d-0e1f2a3b4c5d",
+              "leftValue": "={{ $json.orderFound }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "false"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "7a7b8c9d-0007-4d12-8a1f-d067ca8b4ea2",
+      "name": "Send Discord Reminder",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1750,
+        180
+      ],
+      "onError": "continueRegularOutput",
+      "parameters": {
+        "method": "POST",
+        "url": "http://host.docker.internal:3000/internal/integrations/alerts/send-message",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ tenantId: $('Cart Reminder Webhook').item.json.body.tenantId, message: 'Cart Reminder: ' + ($('Cart Reminder Webhook').item.json.body.customerName || $('Cart Reminder Webhook').item.json.body.customerEmail || 'A customer') + ' has items sitting in their cart and has not placed an order.' }) }}",
+        "options": {}
+      },
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "R8ikTjUCKdJP6lBR",
+          "name": "Backend Internal Token"
+        }
+      },
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 5000
+    },
+    {
+      "id": "8a8b9c0d-0008-4d12-8a1f-d067ca8b4ea2",
+      "name": "Record Send Reminder Step",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        2000,
+        180
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "=http://host.docker.internal:3000/internal/workflow-runs/{{ $('Open Workflow Run').item.json.workflowRunId }}/steps",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ stepKey: 'send_cart_reminder', status: $json.error ? 'failed' : 'succeeded' }) }}",
+        "options": {}
+      },
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "R8ikTjUCKdJP6lBR",
+          "name": "Backend Internal Token"
+        }
+      },
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 1000
+    },
+    {
+      "id": "9a9b0c1d-0009-4d12-8a1f-d067ca8b4ea2",
+      "name": "Close Workflow Run",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1500,
+        600
+      ],
+      "parameters": {
+        "method": "PATCH",
+        "url": "=http://host.docker.internal:3000/internal/workflow-runs/{{ $('Open Workflow Run').item.json.workflowRunId }}",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ status: 'completed' }) }}",
+        "options": {}
+      },
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "R8ikTjUCKdJP6lBR",
+          "name": "Backend Internal Token"
+        }
+      },
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 1000
+    }
+  ],
+  "connections": {
+    "Cart Reminder Webhook": {
+      "main": [
+        [
+          {
+            "node": "Open Workflow Run",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Open Workflow Run": {
+      "main": [
+        [
+          {
+            "node": "Wait 2 Minutes",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Wait 2 Minutes": {
+      "main": [
+        [
+          {
+            "node": "Check Order Exists",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check Order Exists": {
+      "main": [
+        [
+          {
+            "node": "Record Check Order Step",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Record Check Order Step": {
+      "main": [
+        [
+          {
+            "node": "IF Order Not Found",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "IF Order Not Found": {
+      "main": [
+        [
+          {
+            "node": "Send Discord Reminder",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Close Workflow Run",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Send Discord Reminder": {
+      "main": [
+        [
+          {
+            "node": "Record Send Reminder Step",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Record Send Reminder Step": {
+      "main": [
+        [
+          {
+            "node": "Close Workflow Run",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "pinData": {}
+}

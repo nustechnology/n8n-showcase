@@ -15,14 +15,11 @@ import {
 } from "@/components/ui/dialog";
 
 /**
- * Shown on a FAILED workflow-run row. The order-validation workflow has
- * exactly one failure-capable step today (AI Validation, mocked — see
- * backend CLAUDE.md "Orchestrator callbacks"); inventory-check and
- * shipment-creation nodes aren't built yet, so a FAILED run always traces
- * back to that one node. n8n doesn't currently send `errorMessage` when it
- * PATCHes a run to failed (confirmed against real rows — `error` is always
- * null in practice), so this points at the order's own diagnostic dialog
- * (OrderValidationFailureDialog) instead of re-deriving the reason here.
+ * Shown on a FAILED workflow-run row. n8n doesn't currently send
+ * `errorMessage` when it PATCHes a run to failed (confirmed against real
+ * rows — `error` is always null in practice), so this points at the
+ * associated order's diagnostic dialog (where applicable) or shows the
+ * workflow-level error when available.
  */
 export function WorkflowRunFailureDialog({ workspaceSlug, run }: { workspaceSlug: string; run: WorkflowRun }) {
   const errorMessage = typeof run.error?.message === "string" ? run.error.message : null;
@@ -44,9 +41,8 @@ export function WorkflowRunFailureDialog({ workspaceSlug, run }: { workspaceSlug
         <DialogHeader>
           <DialogTitle>Why this run failed</DialogTitle>
           <DialogDescription>
-            This workflow (Shopify Order → AI Validation → Inventory Check → Shipment → Notification) only has one
-            step capable of failing today: <strong>AI Validation</strong>. Inventory check and shipment creation
-            aren&apos;t built yet, so a failed run always traces back to that node rejecting the order.
+            This workflow run failed during execution. The most likely cause is a failed step within the pipeline —
+            check the steps section above for the specific node that failed.
           </DialogDescription>
         </DialogHeader>
         {errorMessage && <p className="rounded-lg border bg-muted/50 p-3 text-status-failed">{errorMessage}</p>}

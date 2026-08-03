@@ -33,3 +33,21 @@ export interface ShopifyOrderPayload {
     phone?: string | null;
   } | null;
 }
+
+// Minimal shape for the checkouts/create Shopify webhook payload.
+export interface ShopifyCheckoutPayload {
+  id: number;
+  token: string;
+  email?: string | null;
+  total_price?: string | null;
+  customer?: {
+    email?: string | null;
+    first_name?: string | null;
+    last_name?: string | null;
+  } | null;
+  line_items?: {
+    product_id?: number | null;
+    title?: string | null;
+    quantity: number;
+  }[];
+}

@@ -349,16 +349,21 @@ export class IntegrationsService {
     if (!integration) return; // already disconnected — idempotent
 
     if (provider === IntegrationProvider.SHOPIFY && integration.credential) {
-      const config = integration.config as { shop?: string; shopifyWebhookId?: string };
-      if (config.shop && config.shopifyWebhookId) {
+      const config = integration.config as { shop?: string; shopifyWebhookId?: string; shopifyCheckoutWebhookId?: string };
+      if (config.shop) {
         try {
           const token = this.credentials.decrypt(integration.credential, integration.id);
           const adapter = this.registry.get(provider) as OAuthAdapter;
-          await adapter.unregisterWebhook?.(token, config.shop, config.shopifyWebhookId);
+          if (config.shopifyWebhookId) {
+            await adapter.unregisterWebhook?.(token, config.shop, config.shopifyWebhookId);
+          }
+          if (config.shopifyCheckoutWebhookId) {
+            await adapter.unregisterWebhook?.(token, config.shop, config.shopifyCheckoutWebhookId);
+          }
         } catch (error) {
           // Best-effort — never block the disconnect on Shopify-side cleanup.
           this.logger.warn(
-            `Failed to remove Shopify webhook for integration ${integration.id}: ${(error as Error).message}`,
+            `Failed to remove Shopify webhooks for integration ${integration.id}: ${(error as Error).message}`,
           );
         }
       }
@@ -521,15 +526,27 @@ export class IntegrationsService {
       provider: IntegrationProvider.SHOPIFY,
     });
 
-    // 7. Register the order webhook. The credential is already valid and
-    // stored at this point, so a failure here is the sharpest edge case:
-    // without explicit handling the integration would read ACTIVE while
-    // silently never receiving any order.
+    // 7. Register the order webhook and checkout webhook. The credential is
+    // already valid and stored at this point, so a failure here is the
+    // sharpest edge case: without explicit handling the integration would
+    // read ACTIVE while silently never receiving any order.
     const callbackUrl = `${this.appBaseUrl}/webhooks/shopify/${integration.id}`;
     try {
       const { webhookId } = (await adapter.registerWebhook?.(token, shop, callbackUrl)) ?? {};
       if (!webhookId) {
         throw new Error('Shopify adapter did not return a webhookId');
+      }
+      const shopifyAdapter = adapter as unknown as { registerCheckoutWebhook?: (token: string, shop: string, callbackUrl: string) => Promise<{ webhookId: string }> };
+      let checkoutWebhookId: string | undefined;
+      try {
+        const result = await shopifyAdapter.registerCheckoutWebhook?.(token, shop, callbackUrl);
+        checkoutWebhookId = result?.webhookId;
+        this.logger.log(`Registered checkout webhook for integration ${integration.id}: ${checkoutWebhookId}`);
+      } catch (checkoutErr) {
+        this.logger.warn(
+          `Shopify checkout webhook registration failed for integration ${integration.id} — cart-reminder won't fire`,
+          checkoutErr as Error,
+        );
       }
       await this.prisma.integration.update({
         where: { id: integration.id },
@@ -539,7 +556,7 @@ export class IntegrationsService {
           oauthStateExpiresAt: null,
           lastErrorMessage: null,
           lastCheckedAt: new Date(),
-          config: { shop, shopifyWebhookId: webhookId },
+          config: { shop, shopifyWebhookId: webhookId, shopifyCheckoutWebhookId: checkoutWebhookId ?? undefined },
         },
       });
     } catch (error) {

@@ -31,3 +31,9 @@ export const SendResendEmailSchema = z.object({
   orderId: z.string().min(1),
 });
 export type SendResendEmailInput = z.infer<typeof SendResendEmailSchema>;
+
+export const CheckCheckoutOrderSchema = z.object({
+  tenantId: z.string().min(1),
+  checkoutToken: z.string().min(1),
+});
+export type CheckCheckoutOrderInput = z.infer<typeof CheckCheckoutOrderSchema>;

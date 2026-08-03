@@ -25,6 +25,8 @@ export interface ProviderMeta {
   apiKeyFields?: ApiKeyField[];
   /** Powers the "How to connect" dialog on the integration detail page. */
   connectGuide: ConnectGuideStep[];
+  /** Which workflows this provider appears in. Defaults to both if omitted. */
+  workflows?: string[];
 }
 
 /**
@@ -38,6 +40,7 @@ export const PROVIDER_CATALOG: ProviderMeta[] = [
     name: "Shopify",
     description: "Pulls new orders in and triggers the automation pipeline.",
     authMethod: "oauth",
+    workflows: ["order-validation", "cart-reminder"],
     connectGuide: [
       {
         title: "Enable the required API scopes first",
@@ -91,6 +94,7 @@ export const PROVIDER_CATALOG: ProviderMeta[] = [
     name: "Mailer",
     description: "Sends customer order and shipment notification emails.",
     authMethod: "apiKey",
+    workflows: ["order-validation"],
     connectGuide: [],
   },
   {
@@ -98,6 +102,7 @@ export const PROVIDER_CATALOG: ProviderMeta[] = [
     name: "Inventory",
     description: "Checks stock levels before an order is fulfilled.",
     authMethod: "oauth",
+    workflows: ["order-validation"],
     connectGuide: [],
   },
   {
@@ -105,6 +110,7 @@ export const PROVIDER_CATALOG: ProviderMeta[] = [
     name: "Shipping",
     description: "Creates shipments and returns tracking numbers.",
     authMethod: "apiKey",
+    workflows: ["order-validation"],
     connectGuide: [],
   },
   {
@@ -112,6 +118,7 @@ export const PROVIDER_CATALOG: ProviderMeta[] = [
     name: "Alerts",
     description: "Posts a notification to your team when a run needs attention.",
     authMethod: "apiKey",
+    workflows: ["order-validation", "cart-reminder"],
     connectGuide: [],
   },
 ];
