@@ -117,6 +117,7 @@ export default function ShippingPage() {
     handleSubmit,
     reset,
     control,
+    getValues,
     setValue,
     formState: { errors },
   } = useForm<ShippingFormValues>({ resolver: zodResolver(shippingSchema) });
@@ -325,9 +326,34 @@ export default function ShippingPage() {
                 </div>
 
                 <div className="space-y-3">
-                  <div>
-                    <p className="font-medium">Ship-from address</p>
-                    <p className="text-sm text-muted-foreground">This origin address is used on every shipment — collected once here.</p>
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <p className="font-medium">Ship-from address</p>
+                      <p className="text-sm text-muted-foreground">This origin address is used on every shipment — collected once here.</p>
+                    </div>
+                    <Button
+                      type="button"
+                      variant="secondary"
+                      size="sm"
+                      onClick={() => {
+                        reset({
+                          ...getValues(),
+                          fromAddress: {
+                            name: "Test Customer",
+                            company: "",
+                            street1: "164 Townsend St",
+                            street2: "",
+                            city: "San Francisco",
+                            state: "CA",
+                            zip: "94107",
+                            country: "US",
+                            phone: "",
+                          },
+                        });
+                      }}
+                    >
+                      Fill test address
+                    </Button>
                   </div>
 
                   <div className="grid grid-cols-2 gap-3">
@@ -349,7 +375,7 @@ export default function ShippingPage() {
                           <AddressAutocompleteInput
                             id="fromAddress.street1"
                             placeholder="123 Main St"
-                            value={field.value}
+                            value={field.value ?? ""}
                             onValueChange={field.onChange}
                             onSelectAddress={applyAddressSuggestion}
                           />
