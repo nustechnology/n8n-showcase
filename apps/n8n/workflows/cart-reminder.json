@@ -41,7 +41,7 @@
         "genericAuthType": "httpHeaderAuth",
         "sendBody": true,
         "specifyBody": "json",
-        "jsonBody": "={{ JSON.stringify({ tenantId: $json.body.tenantId, orderId: null, workflowName: 'cart-reminder', correlationId: $json.body.correlationId }) }}",
+        "jsonBody": "={{ JSON.stringify({ tenantId: $json.body.tenantId, workflowName: 'cart-reminder', correlationId: $json.body.correlationId }) }}",
         "options": {}
       },
       "credentials": {

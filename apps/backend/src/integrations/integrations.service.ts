@@ -538,8 +538,9 @@ export class IntegrationsService {
       }
       const shopifyAdapter = adapter as unknown as { registerCheckoutWebhook?: (token: string, shop: string, callbackUrl: string) => Promise<{ webhookId: string }> };
       let checkoutWebhookId: string | undefined;
-      try {
-        const result = await shopifyAdapter.registerCheckoutWebhook?.(token, shop, callbackUrl);
+    const checkoutCallbackUrl = `${callbackUrl}/checkout`;
+    try {
+      const result = await shopifyAdapter.registerCheckoutWebhook?.(token, shop, checkoutCallbackUrl);
         checkoutWebhookId = result?.webhookId;
         this.logger.log(`Registered checkout webhook for integration ${integration.id}: ${checkoutWebhookId}`);
       } catch (checkoutErr) {

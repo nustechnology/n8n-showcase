@@ -14,7 +14,7 @@ import { ConfigService } from '@nestjs/config';
 
 import { Request } from 'express';
 
-import { Prisma } from '@prisma/client';
+import { Integration, Prisma, WebhookSource } from '@prisma/client';
 
 import { PrismaService } from '../prisma/prisma.service';
 
@@ -30,24 +30,10 @@ import { ShopifyCheckoutPayload, ShopifyOrderPayload } from './shopify-order-pay
 import { ShopifyWebhookService } from './shopify-webhook.service';
 import { claimWebhookInboundEvent } from './webhook-inbox-claim.util';
 
-// Path-scoped by Integration.id, not a single static URL with tenant
-// resolved from a header — HMAC verification alone can't identify which
-// tenant this is (the signing secret is shared across the whole app, not
-// per-shop), so something has to disambiguate. A primary-key path lookup
-// is an indexed, unambiguous read; matching X-Shopify-Shop-Domain against
-// every tenant's Integration.config would be an unindexed JSON scan on
-// every single order webhook, not just a one-time OAuth callback.
 @Public()
 @Controller('webhooks/shopify')
 export class ShopifyWebhookController {
   private readonly logger = new Logger(ShopifyWebhookController.name);
-  // `get`, not `getOrThrow` — same reasoning as ShopifyAdapter/
-  // IntegrationsService: a platform-level integration credential a
-  // deployment can legitimately not have configured yet, not app-wide infra.
-  // In practice no Shopify integration can ever reach ACTIVE without this
-  // set (the OAuth connect flow itself is gated on it), so this route
-  // shouldn't be reachable in that state — but a missing value fails the
-  // HMAC check below cleanly rather than crashing boot.
   private readonly clientSecret: string | undefined;
 
   constructor(
@@ -60,11 +46,13 @@ export class ShopifyWebhookController {
     this.clientSecret = config.get<string>('SHOPIFY_CLIENT_SECRET');
   }
 
-  @Post(':integrationId')
-  async handle(
-    @Param('integrationId') integrationId: string,
-    @Req() req: RawBodyRequest<Request>,
-  ): Promise<{ received: true }> {
+  // Shared HMAC verification + integration lookup + webhook dedup claim.
+  // Returns the integration if everything checks out, or null after
+  // recording a rejection (caller should return { received: true }).
+  private async verifyAndResolve(
+    integrationId: string,
+    req: RawBodyRequest<Request>,
+  ): Promise<{ integration: Integration; webhookIdHeader: string; payload: unknown } | null> {
     if (!req.rawBody) {
       throw new BadRequestException('Missing request body');
     }
@@ -84,18 +72,18 @@ export class ShopifyWebhookController {
       throw new BadRequestException('Invalid webhook signature');
     }
 
-    const payload = JSON.parse(req.rawBody.toString('utf8')) as ShopifyOrderPayload | ShopifyCheckoutPayload;
+    const payload = JSON.parse(req.rawBody.toString('utf8'));
     const integration = await this.prisma.integration.findUnique({ where: { id: integrationId } });
 
     const claimed = await claimWebhookInboundEvent(this.prisma, {
       tenantId: integration?.tenantId,
-      source: 'SHOPIFY',
+      source: 'SHOPIFY' as WebhookSource,
       externalId: webhookIdHeader,
-      payload: payload as unknown as Prisma.InputJsonValue,
+      payload: payload as Prisma.InputJsonValue,
       headers: { shop: shopHeader, webhookId: webhookIdHeader } as Prisma.InputJsonValue,
     });
     if (!claimed) {
-      return { received: true };
+      return null;
     }
 
     let failureReason: string | null = null;
@@ -113,55 +101,27 @@ export class ShopifyWebhookController {
         where: { source_externalId: { source: 'SHOPIFY', externalId: webhookIdHeader } },
         data: { status: 'FAILED' },
       });
+      return null;
+    }
+
+    return { integration, webhookIdHeader, payload };
+  }
+
+  @Post(':integrationId')
+  async handle(
+    @Param('integrationId') integrationId: string,
+    @Req() req: RawBodyRequest<Request>,
+  ): Promise<{ received: true }> {
+    const resolved = await this.verifyAndResolve(integrationId, req);
+    if (!resolved) {
       return { received: true };
     }
 
-    const isCheckoutPayload = (p: ShopifyOrderPayload | ShopifyCheckoutPayload): p is ShopifyCheckoutPayload =>
-      'token' in p && !('name' in p);
+    const { integration, webhookIdHeader } = resolved;
+    const payload = resolved.payload as ShopifyOrderPayload;
 
     try {
-      await this.processPayload(integration, payload, webhookIdHeader, isCheckoutPayload(payload));
-    } catch (error) {
-      this.logger.error(
-        `Failed to process Shopify webhook for integration ${integrationId}`,
-        error as Error,
-      );
-      await this.prisma.webhookInboundEvent.update({
-        where: { source_externalId: { source: 'SHOPIFY', externalId: webhookIdHeader } },
-        data: { status: 'FAILED' },
-      });
-      throw new ServiceUnavailableException('Failed to process Shopify webhook');
-    }
-
-    return { received: true };
-  }
-
-  private async processPayload(
-    integration: NonNullable<Awaited<ReturnType<PrismaService['integration']['findUnique']>>>,
-    payload: ShopifyOrderPayload | ShopifyCheckoutPayload,
-    webhookIdHeader: string,
-    isCheckout: boolean,
-  ): Promise<void> {
-    if (isCheckout) {
-      const checkout = payload as ShopifyCheckoutPayload;
-      const items = (checkout.line_items ?? []).map((item) => ({
-        name: item.title ?? 'Unknown item',
-        quantity: item.quantity,
-      }));
-
-      await this.n8nOrchestrator.startCartReminderRun({
-        tenantId: integration.tenantId,
-        checkoutToken: checkout.token,
-        customerEmail: checkout.email ?? checkout.customer?.email ?? null,
-        customerName: checkout.customer
-          ? [checkout.customer.first_name, checkout.customer.last_name].filter(Boolean).join(' ') || null
-          : null,
-        items,
-        correlationId: randomUUID(),
-      });
-    } else {
-      const orderPayload = payload as ShopifyOrderPayload;
-      const order = await this.shopifyWebhooks.handleOrderCreated(integration, orderPayload);
+      const order = await this.shopifyWebhooks.handleOrderCreated(integration, payload);
       this.realtime.publishOrderUpdate({
         tenantId: integration.tenantId,
         orderId: order.id,
@@ -173,11 +133,69 @@ export class ShopifyWebhookController {
         orderId: order.id,
         correlationId: randomUUID(),
       });
+      await this.prisma.webhookInboundEvent.update({
+        where: { source_externalId: { source: 'SHOPIFY', externalId: webhookIdHeader } },
+        data: { status: 'PROCESSED', processedAt: new Date() },
+      });
+    } catch (error) {
+      this.logger.error(
+        `Failed to process Shopify order webhook for integration ${integrationId}`,
+        error as Error,
+      );
+      await this.prisma.webhookInboundEvent.update({
+        where: { source_externalId: { source: 'SHOPIFY', externalId: webhookIdHeader } },
+        data: { status: 'FAILED' },
+      });
+      throw new ServiceUnavailableException('Failed to process Shopify order webhook');
     }
 
-    await this.prisma.webhookInboundEvent.update({
-      where: { source_externalId: { source: 'SHOPIFY', externalId: webhookIdHeader } },
-      data: { status: 'PROCESSED', processedAt: new Date() },
-    });
+    return { received: true };
+  }
+
+  @Post(':integrationId/checkout')
+  async handleCheckout(
+    @Param('integrationId') integrationId: string,
+    @Req() req: RawBodyRequest<Request>,
+  ): Promise<{ received: true }> {
+    const resolved = await this.verifyAndResolve(integrationId, req);
+    if (!resolved) {
+      return { received: true };
+    }
+
+    const { integration, webhookIdHeader } = resolved;
+    const checkout = resolved.payload as ShopifyCheckoutPayload;
+    const items = (checkout.line_items ?? []).map((item) => ({
+      name: item.title ?? 'Unknown item',
+      quantity: item.quantity,
+    }));
+
+    try {
+      await this.n8nOrchestrator.startCartReminderRun({
+        tenantId: integration.tenantId,
+        checkoutToken: checkout.token,
+        customerEmail: checkout.email ?? checkout.customer?.email ?? null,
+        customerName: checkout.customer
+          ? [checkout.customer.first_name, checkout.customer.last_name].filter(Boolean).join(' ') || null
+          : null,
+        items,
+        correlationId: randomUUID(),
+      });
+      await this.prisma.webhookInboundEvent.update({
+        where: { source_externalId: { source: 'SHOPIFY', externalId: webhookIdHeader } },
+        data: { status: 'PROCESSED', processedAt: new Date() },
+      });
+    } catch (error) {
+      this.logger.error(
+        `Failed to process Shopify checkout webhook for integration ${integrationId}`,
+        error as Error,
+      );
+      await this.prisma.webhookInboundEvent.update({
+        where: { source_externalId: { source: 'SHOPIFY', externalId: webhookIdHeader } },
+        data: { status: 'FAILED' },
+      });
+      throw new ServiceUnavailableException('Failed to process Shopify checkout webhook');
+    }
+
+    return { received: true };
   }
 }

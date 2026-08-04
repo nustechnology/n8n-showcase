@@ -18,6 +18,7 @@ export function ShopifyConnectForm() {
   const {
     register,
     handleSubmit,
+    setValue,
     formState: { errors },
   } = useForm<ShopifyConnectFormValues>({ resolver: zodResolver(shopifyConnectSchema) });
 
@@ -51,12 +52,21 @@ export function ShopifyConnectForm() {
         />
         {errors.shop && <p className="text-sm text-status-failed">{errors.shop.message}</p>}
       </div>
-      <Button
-        type="submit"
-        disabled={connect.isPending}
-      >
-        {connect.isPending ? "Redirecting…" : "Connect Shopify"}
-      </Button>
+      <div className="flex gap-2">
+        <Button
+          type="submit"
+          disabled={connect.isPending}
+        >
+          {connect.isPending ? "Redirecting…" : "Connect Shopify"}
+        </Button>
+        <Button
+          type="button"
+          variant="secondary"
+          onClick={() => setValue("shop", "automation-experience-center.myshopify.com")}
+        >
+          Fill test address
+        </Button>
+      </div>
     </form>
   );
 }
