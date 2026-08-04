@@ -1,4 +1,4 @@
-import { BadRequestException, RawBodyRequest } from '@nestjs/common';
+import { BadRequestException, InternalServerErrorException, RawBodyRequest } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { Test } from '@nestjs/testing';
 
@@ -165,13 +165,13 @@ describe('ClerkWebhookController', () => {
     expect(clerkWebhooks.handle).toHaveBeenCalledTimes(1);
   });
 
-  it('still acks with 200 when the handler throws, and records FAILED', async () => {
+  it('throws 500 when the handler throws, and records FAILED — Svix will retry', async () => {
     clerkWebhooks.handle.mockRejectedValue(new Error('boom'));
 
     const payload = JSON.stringify({ type: 'organization.created', data: { id: 'org_1' } });
     const req = signedRequest('msg_1', payload);
 
-    await expect(controller.handle(req)).resolves.toEqual({ received: true });
+    await expect(controller.handle(req)).rejects.toBeInstanceOf(InternalServerErrorException);
 
     expect(prisma.webhookInboundEvent.update).toHaveBeenCalledWith(
       expect.objectContaining({ data: { status: 'FAILED' } }),
