@@ -3,15 +3,14 @@
 import { useState } from "react";
 
 import { Check } from "lucide-react";
-import { useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 
 import { usePermission } from "@/hooks/use-permission";
 
-import { useIntegrations, useTestIntegration, useDisconnectIntegration, integrationsKey } from "@/features/integrations/hooks";
+import { useIntegrations, useTestIntegration, useDisconnectIntegration } from "@/features/integrations/hooks";
 import type { Provider } from "@/features/integrations/types";
 
-import { ApiError, isTransientError } from "@/lib/api-error";
+import { isTransientError } from "@/lib/api-error";
 
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -93,7 +92,6 @@ const ALERT_CATALOG: AlertMeta[] = [
 ];
 
 export default function AlertsPage() {
-  const queryClient = useQueryClient();
   const { data: integrations, isPending } = useIntegrations();
   const canManage = usePermission("integration:manage");
   const canTest = usePermission("integration:test");

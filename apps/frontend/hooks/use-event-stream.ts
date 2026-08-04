@@ -1,66 +1,70 @@
 "use client";
 
-import { useEffect } from "react";
+import { useEffect, useRef } from "react";
 
 import { useAuth, useOrganization } from "@clerk/nextjs";
 import { EventStreamContentType, fetchEventSource } from "@microsoft/fetch-event-source";
 
-class RetriableError extends Error {}
 class FatalError extends Error {}
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL;
 
-/**
- * Backs the two SSE endpoints from the integration contract §7 —
- * GET /workflow-runs/:id/stream and GET /tenants/:id/activity/stream — both
- * authenticated with the same Clerk Bearer token as REST. Native EventSource
- * can't send an Authorization header, so this uses fetchEventSource instead
- * of `new EventSource(url)`, which would silently connect unauthenticated.
- */
+const SSE_RECONNECT_MS = 5_000;
+
 export function useEventStream(path: string | null, onMessage: (event: MessageEvent) => void) {
   const { getToken } = useAuth();
   const { organization } = useOrganization();
+  const onMessageRef = useRef(onMessage);
+
+  useEffect(() => {
+    onMessageRef.current = onMessage;
+  });
 
   useEffect(() => {
     if (!path || !API_URL) return;
 
     const controller = new AbortController();
 
-    (async () => {
-      const token = await getToken();
-      await fetchEventSource(`${API_URL}${path}`, {
-        signal: controller.signal,
-        headers: {
-          ...(token ? { Authorization: `Bearer ${token}` } : {}),
-          ...(organization?.id ? { "X-Workspace-Id": organization.id } : {}),
-        },
-        onmessage(event) {
-          onMessage(event as unknown as MessageEvent);
-        },
-        async onopen(response) {
-          if (response.ok && response.headers.get("content-type")?.startsWith(EventStreamContentType)) return;
+    const buildHeaders = async () => {
+      const token = await getToken({ skipCache: true });
+      return {
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        ...(organization?.id ? { "X-Workspace-Id": organization.id } : {}),
+      };
+    };
 
-          const status = response.status;
-          throw new FatalError(
-            status === 401 || status === 403
-              ? `Unauthorized — token likely expired (HTTP ${status})`
-              : `Stream failed (HTTP ${status})`,
-          );
-        },
-        onerror(err) {
-          if (err instanceof FatalError) throw err;
-          throw new RetriableError();
-        },
-      });
-    })().catch((err) => {
-      if (controller.signal.aborted) return;
+    fetchEventSource(`${API_URL}${path}`, {
+      signal: controller.signal,
+      openWhenHidden: true,
+      async fetch(input, init) {
+        const headers = await buildHeaders();
+        return fetch(input, {
+          ...init,
+          headers: {
+            ...(init?.headers as Record<string, string> ?? {}),
+            ...headers,
+          },
+        });
+      },
+      onmessage(event) {
+        onMessageRef.current(event as unknown as MessageEvent);
+      },
+      async onopen(response) {
+        if (response.ok && response.headers.get("content-type")?.startsWith(EventStreamContentType)) return;
 
-      if (err instanceof FatalError) return;
-
-      console.error("Event stream error", err);
+        const status = response.status;
+        throw new FatalError(
+          status === 401 || status === 403
+            ? `Unauthorized — token likely expired (HTTP ${status})`
+            : `Stream failed (HTTP ${status})`,
+        );
+      },
+      onerror(err) {
+        if (err instanceof FatalError) throw err;
+        return SSE_RECONNECT_MS;
+      },
     });
 
     return () => controller.abort();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [path, organization?.id]);
+  }, [path, getToken, organization?.id]);
 }

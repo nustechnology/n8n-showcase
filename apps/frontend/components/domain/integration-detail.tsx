@@ -146,27 +146,23 @@ export function IntegrationDetail({
 
   if (!meta) notFound();
 
-  // MAILER is a FE-only synthetic catalog entry — redirect to the dedicated
-  // mailer selection page instead of rendering a per-provider detail.
-  if (meta.provider === "MAILER") {
-    router.replace(`/${workspaceSlug}/integrations/mailer`);
-    return null;
-  }
+  const shouldRedirect = (() => {
+    const redirectMap: Record<string, string> = {
+      MAILER: "mailer",
+      ALERTS: "alerts",
+      SHIPPING: "shipping",
+      INVENTORY: "inventory",
+    };
+    return redirectMap[meta.provider] ?? null;
+  })();
 
-  if (meta.provider === "ALERTS") {
-    router.replace(`/${workspaceSlug}/integrations/alerts`);
-    return null;
-  }
+  useEffect(() => {
+    if (shouldRedirect) {
+      router.replace(`/${workspaceSlug}/integrations/${shouldRedirect}`);
+    }
+  }, [shouldRedirect, router, workspaceSlug]);
 
-  if (meta.provider === "SHIPPING") {
-    router.replace(`/${workspaceSlug}/integrations/shipping`);
-    return null;
-  }
-
-  if (meta.provider === "INVENTORY") {
-    router.replace(`/${workspaceSlug}/integrations/inventory`);
-    return null;
-  }
+  if (shouldRedirect) return null;
 
   const { tone, label } = integration ? mapIntegrationStatus(integration.status) : mapIntegrationStatus("DISCONNECTED");
   const callbackNotice = callbackStatus ? CALLBACK_STATUS_COPY[callbackStatus] : undefined;

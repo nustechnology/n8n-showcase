@@ -3,12 +3,11 @@
 import { useState } from "react";
 
 import { Check } from "lucide-react";
-import { useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 
 import { usePermission } from "@/hooks/use-permission";
 
-import { useIntegrations, useTestIntegration, useDisconnectIntegration, integrationsKey } from "@/features/integrations/hooks";
+import { useIntegrations, useTestIntegration, useDisconnectIntegration } from "@/features/integrations/hooks";
 import type { Provider } from "@/features/integrations/types";
 
 import { ApiError, isTransientError } from "@/lib/api-error";
@@ -107,7 +106,6 @@ function mapResendError(error: ApiError): string | undefined {
 }
 
 export default function MailerPage() {
-  const queryClient = useQueryClient();
   const { data: integrations, isPending } = useIntegrations();
   const canManage = usePermission("integration:manage");
   const canTest = usePermission("integration:test");

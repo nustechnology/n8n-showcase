@@ -72,7 +72,7 @@ export function OrdersList({ workspaceSlug }: { workspaceSlug: string }) {
 
   if (isError) {
     return (
-      <div className="flex items-start gap-3 rounded-lg border border-status-failed/30 bg-status-failed-bg px-4 py-3e text-status-failed">
+      <div className="flex items-start gap-3 rounded-lg border border-status-failed/30 bg-status-failed-bg px-4 py-3 text-status-failed">
         <AlertTriangle className="mt-0.5 size-4 shrink-0" />
         <div>
           <p className="font-medium">Couldn&apos;t load orders</p>

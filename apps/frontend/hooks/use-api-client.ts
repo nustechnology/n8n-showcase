@@ -59,20 +59,34 @@ export function useApiClient(): ApiFetch {
         // (e.g. POST /integrations/:provider/test), not just 204, and
         // `res.json()` throws on an empty string.
         const raw = await res.text();
-        const body = raw ? JSON.parse(raw) : undefined;
+        let body: Record<string, unknown> | undefined;
+        if (raw) {
+          try {
+            body = JSON.parse(raw);
+          } catch {
+            // non-JSON response — treat as raw text message
+            body = { message: raw };
+          }
+        }
         return { res, body };
       };
 
       let { res, body } = await request(false);
 
       const isStaleTokenError =
-        res.status === 401 || res.status === 400 || (res.status === 403 && body?.message === NO_ACTIVE_WORKSPACE_MESSAGE);
+        res.status === 401 || (res.status === 403 && body?.message === NO_ACTIVE_WORKSPACE_MESSAGE);
       if (isStaleTokenError) {
         ({ res, body } = await request(true));
       }
 
       if (!res.ok) {
-        const error = new ApiError(res.status, body?.message ?? res.statusText, body, body?.error, body?.retryAfterMs);
+        const error = new ApiError(
+          res.status,
+          (body?.message as string | undefined) ?? res.statusText,
+          body,
+          body?.error as string | undefined,
+          body?.retryAfterMs as number | undefined,
+        );
 
         // Fixed here, at the one place every request passes through, rather
         // than in each mutation's onError — a 429 isn't specific to any one

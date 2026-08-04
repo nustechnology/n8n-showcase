@@ -1,4 +1,4 @@
-import { siShopify, siResend, siZoho } from "simple-icons";
+import { siShopify, siResend, siZoho } from "simple-icons/icons";
 
 import type { CatalogProvider } from "@/components/domain/integration-catalog";
 

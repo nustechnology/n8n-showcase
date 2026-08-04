@@ -57,7 +57,7 @@ export const PROVIDER_CATALOG: ProviderMeta[] = [
             : <strong>Apps → this app → Versions → Create version</strong>, then enable exactly{" "}
             <code>read_orders</code>, <code>read_fulfillments</code>, <code>write_fulfillments</code>,{" "}
             <code>read_locations</code>, <code>read_merchant_managed_fulfillment_orders</code>, and{" "}
-            <code>write_merchant_managed_fulfillment_orders</code>. Release the version — a scope isn't active
+            <code>write_merchant_managed_fulfillment_orders</code>. Release the version — a scope isn&apos;t active
             until the version is released.
           </>
         ),

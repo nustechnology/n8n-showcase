@@ -1,25 +1,31 @@
 "use client";
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useOrganization } from "@clerk/nextjs";
 
 import { useApiClient } from "@/hooks/use-api-client";
 
 import * as api from "./api";
 
-export const workflowRunsKey = ["workflow-runs"] as const;
+function useWorkspaceWorkflowRunsKey() {
+  const { organization } = useOrganization();
+  return ["workflow-runs", organization?.id] as const;
+}
 
 export function useWorkflowRuns() {
   const apiFetch = useApiClient();
+  const key = useWorkspaceWorkflowRunsKey();
   return useQuery({
-    queryKey: workflowRunsKey,
+    queryKey: key,
     queryFn: () => api.listWorkflowRuns(apiFetch),
   });
 }
 
 export function useWorkflowRun(id: string) {
   const apiFetch = useApiClient();
+  const workspaceKey = useWorkspaceWorkflowRunsKey();
   return useQuery({
-    queryKey: ["workflow-runs", id],
+    queryKey: [...workspaceKey, id],
     queryFn: () => api.getWorkflowRun(apiFetch, id),
   });
 }
@@ -27,32 +33,37 @@ export function useWorkflowRun(id: string) {
 export function useRetryWorkflowRun(id: string) {
   const apiFetch = useApiClient();
   const queryClient = useQueryClient();
+  const workspaceKey = useWorkspaceWorkflowRunsKey();
+  const runKey = [...workspaceKey, id];
   return useMutation({
     mutationFn: () => api.retryWorkflowRun(apiFetch, id),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: workflowRunsKey });
-      queryClient.invalidateQueries({ queryKey: ["workflow-runs", id] });
+      queryClient.invalidateQueries({ queryKey: workspaceKey });
+      queryClient.invalidateQueries({ queryKey: runKey });
     },
   });
 }
 
-// Not a reuse of useRetryWorkflowRun(id) — that hook binds its id at
-// hook-call time, which makes it impossible to invoke from an imperative
-// click handler in a loop (hooks only run during render). This takes the
-// id list at .mutate() time instead, firing the same underlying endpoint
-// once per run via Promise.allSettled (no batch endpoint exists, and none
-// is needed — each retry is already independently guarded server-side).
 export function useBulkRetryWorkflowRuns() {
   const apiFetch = useApiClient();
   const queryClient = useQueryClient();
+  const workspaceKey = useWorkspaceWorkflowRunsKey();
+  const BATCH_SIZE = 5;
   return useMutation({
     mutationFn: async (ids: string[]) => {
-      const results = await Promise.allSettled(ids.map((id) => api.retryWorkflowRun(apiFetch, id)));
+      const results: PromiseSettledResult<unknown>[] = [];
+      for (let i = 0; i < ids.length; i += BATCH_SIZE) {
+        const batch = ids.slice(i, i + BATCH_SIZE);
+        const batchResults = await Promise.allSettled(
+          batch.map((id) => api.retryWorkflowRun(apiFetch, id))
+        );
+        results.push(...batchResults);
+      }
       return {
         succeeded: results.filter((r) => r.status === "fulfilled").length,
         failed: results.filter((r) => r.status === "rejected").length,
       };
     },
-    onSettled: () => queryClient.invalidateQueries({ queryKey: workflowRunsKey }),
+    onSettled: () => queryClient.invalidateQueries({ queryKey: workspaceKey }),
   });
 }
