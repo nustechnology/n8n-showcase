@@ -25,22 +25,26 @@ ENV DATABASE_URL=postgresql://placeholder:placeholder@localhost:5432/postgres
 
 RUN npx turbo prisma:generate --filter=@n8n-showcase/backend
 RUN npx turbo build --filter=@n8n-showcase/backend
+RUN npm prune --production
 
 FROM node:22-alpine AS production
 
 RUN apk add --no-cache openssl
+RUN addgroup -g 1001 -S nodejs && adduser -S nestjs -u 1001
 
 WORKDIR /app
 
-COPY --from=builder /app/node_modules ./node_modules
-COPY --from=builder /app/package.json /app/package-lock.json ./
-COPY --from=builder /app/packages/shared-schemas/dist ./packages/shared-schemas/dist
-COPY --from=builder /app/packages/shared-schemas/package.json ./packages/shared-schemas/
-COPY --from=builder /app/apps/backend/dist ./apps/backend/dist
-COPY --from=builder /app/apps/backend/prisma ./apps/backend/prisma
-COPY --from=builder /app/apps/backend/package.json ./apps/backend/
+COPY --from=builder --chown=nestjs:nodejs /app/node_modules ./node_modules
+COPY --from=builder --chown=nestjs:nodejs /app/package.json /app/package-lock.json ./
+COPY --from=builder --chown=nestjs:nodejs /app/packages/shared-schemas/dist ./packages/shared-schemas/dist
+COPY --from=builder --chown=nestjs:nodejs /app/packages/shared-schemas/package.json ./packages/shared-schemas/
+COPY --from=builder --chown=nestjs:nodejs /app/apps/backend/dist ./apps/backend/dist
+COPY --from=builder --chown=nestjs:nodejs /app/apps/backend/prisma ./apps/backend/prisma
+COPY --from=builder --chown=nestjs:nodejs /app/apps/backend/package.json ./apps/backend/
 
 ENV NODE_ENV=production
 EXPOSE 3000
+
+USER nestjs
 
 CMD ["node", "apps/backend/dist/main.js"]

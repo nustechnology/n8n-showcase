@@ -1,6 +1,7 @@
 import {
   BadRequestException,
   Controller,
+  InternalServerErrorException,
   Logger,
   Post,
   RawBodyRequest,
@@ -89,15 +90,12 @@ export class ClerkWebhookController {
         data: { status: 'PROCESSED', processedAt: new Date() },
       });
     } catch (error) {
-      // Still ack with 200 below — the failure is our bug to fix, not
-      // something a Svix retry would resolve, and we don't want Clerk
-      // redelivering the same event indefinitely. The FAILED row is the
-      // trail for following up.
       this.logger.error(`Failed to process Clerk webhook "${event.type}"`, error as Error);
       await this.prisma.webhookInboundEvent.update({
         where: { source_externalId: { source: 'CLERK', externalId: svixId } },
         data: { status: 'FAILED' },
       });
+      throw new InternalServerErrorException('Failed to process webhook — Svix will retry');
     }
 
     return { received: true };

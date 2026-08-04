@@ -17,12 +17,38 @@ function isPrivateOrReservedIpv4(ip: string): boolean {
 
 function isPrivateOrReservedIpv6(ip: string): boolean {
   const lower = ip.toLowerCase();
+
+  // IPv4-mapped IPv6 addresses (::ffff/96) — extract the embedded IPv4
+  // address and check it with the IPv4 private/reserved logic. Handles both
+  // mixed notation (::ffff:127.0.0.1) and hex notation (::ffff:7f00:1),
+  // since Node's URL parser normalizes the former into the latter.
+  if (lower.startsWith('::ffff:')) {
+    const ipv4Suffix = lower.slice(7);
+    if (ipv4Suffix.includes('.')) {
+      if (isIPv4(ipv4Suffix)) return isPrivateOrReservedIpv4(ipv4Suffix);
+    } else {
+      const hexParts = ipv4Suffix.split(':');
+      if (hexParts.length === 2) {
+        const high = parseInt(hexParts[0], 16);
+        const low = parseInt(hexParts[1], 16);
+        if (!isNaN(high) && !isNaN(low)) {
+          const a = (high >> 8) & 0xff;
+          const b = high & 0xff;
+          const c = (low >> 8) & 0xff;
+          const d = low & 0xff;
+          return isPrivateOrReservedIpv4(`${a}.${b}.${c}.${d}`);
+        }
+      }
+    }
+    // Malformed IPv4-mapped suffix — block it
+    return true;
+  }
+
   return (
-    lower === '::1' || // loopback
-    lower.startsWith('fc') || // fc00::/7 unique local
+    lower === '::1' ||
+    lower.startsWith('fc') ||
     lower.startsWith('fd') ||
-    lower.startsWith('fe80') || // link-local
-    lower.startsWith('::ffff:127.') // IPv4-mapped loopback
+    lower.startsWith('fe80')
   );
 }
 
