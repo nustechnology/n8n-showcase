@@ -94,7 +94,7 @@ export const PROVIDER_CATALOG: ProviderMeta[] = [
     name: "Mailer",
     description: "Sends customer order and shipment notification emails.",
     authMethod: "apiKey",
-    workflows: ["order-validation"],
+    workflows: ["order-validation", "cart-reminder"],
     connectGuide: [],
   },
   {
@@ -118,7 +118,7 @@ export const PROVIDER_CATALOG: ProviderMeta[] = [
     name: "Alerts",
     description: "Posts a notification to your team when a run needs attention.",
     authMethod: "apiKey",
-    workflows: ["order-validation", "cart-reminder"],
+    workflows: ["order-validation"],
     connectGuide: [],
   },
 ];

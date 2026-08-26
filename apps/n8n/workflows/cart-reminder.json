@@ -70,7 +70,7 @@
     },
     {
       "id": "4a4b5c6d-0004-4d12-8a1f-d067ca8b4ea2",
-      "name": "Check Order Exists",
+      "name": "Check Cart Checkout",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
       "position": [
@@ -79,12 +79,12 @@
       ],
       "parameters": {
         "method": "POST",
-        "url": "http://host.docker.internal:3000/internal/integrations/shopify/check-checkout-order",
+        "url": "http://host.docker.internal:3000/internal/integrations/shopify/check-cart-checkout",
         "authentication": "genericCredentialType",
         "genericAuthType": "httpHeaderAuth",
         "sendBody": true,
         "specifyBody": "json",
-        "jsonBody": "={{ JSON.stringify({ tenantId: $('Cart Reminder Webhook').item.json.body.tenantId, checkoutToken: $('Cart Reminder Webhook').item.json.body.checkoutToken }) }}",
+        "jsonBody": "={{ JSON.stringify({ tenantId: $('Cart Reminder Webhook').item.json.body.tenantId, cartToken: $('Cart Reminder Webhook').item.json.body.cartToken }) }}",
         "options": {}
       },
       "credentials": {
@@ -99,7 +99,7 @@
     },
     {
       "id": "5a5b6c7d-0005-4d12-8a1f-d067ca8b4ea2",
-      "name": "Record Check Order Step",
+      "name": "Record Check Cart Checkout Step",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
       "position": [
@@ -113,7 +113,7 @@
         "genericAuthType": "httpHeaderAuth",
         "sendBody": true,
         "specifyBody": "json",
-        "jsonBody": "={{ JSON.stringify({ stepKey: 'check_checkout_order', status: 'succeeded' }) }}",
+        "jsonBody": "={{ JSON.stringify({ stepKey: 'check_cart_checkout', status: 'succeeded' }) }}",
         "options": {}
       },
       "credentials": {
@@ -151,6 +151,15 @@
                 "type": "boolean",
                 "operation": "false"
               }
+            },
+            {
+              "id": "a1b2c3d4-e5f6-4a7b-8c9d-1f2a3b4c5e1",
+              "leftValue": "={{ $json.customerEmail }}",
+              "rightValue": "",
+              "operator": {
+                "type": "string",
+                "operation": "notEmpty"
+              }
             }
           ],
           "combinator": "and"
@@ -160,7 +169,7 @@
     },
     {
       "id": "7a7b8c9d-0007-4d12-8a1f-d067ca8b4ea2",
-      "name": "Send Discord Reminder",
+      "name": "Send Cart Reminder Email",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
       "position": [
@@ -170,12 +179,12 @@
       "onError": "continueRegularOutput",
       "parameters": {
         "method": "POST",
-        "url": "http://host.docker.internal:3000/internal/integrations/alerts/send-message",
+        "url": "http://host.docker.internal:3000/internal/integrations/mailer/send-cart-reminder-email",
         "authentication": "genericCredentialType",
         "genericAuthType": "httpHeaderAuth",
         "sendBody": true,
         "specifyBody": "json",
-        "jsonBody": "={{ JSON.stringify({ tenantId: $('Cart Reminder Webhook').item.json.body.tenantId, message: 'Cart Reminder: ' + ($('Cart Reminder Webhook').item.json.body.customerName || $('Cart Reminder Webhook').item.json.body.customerEmail || 'A customer') + ' has items sitting in their cart and has not placed an order.' }) }}",
+        "jsonBody": "={{ JSON.stringify({ tenantId: $('Cart Reminder Webhook').item.json.body.tenantId, toEmail: $('Check Cart Checkout').item.json.customerEmail, customerName: $('Check Cart Checkout').item.json.customerName, itemNames: $('Cart Reminder Webhook').item.json.body.items.map(function(i) { return i.name; }) }) }}",
         "options": {}
       },
       "credentials": {
@@ -274,25 +283,25 @@
       "main": [
         [
           {
-            "node": "Check Order Exists",
+            "node": "Check Cart Checkout",
             "type": "main",
             "index": 0
           }
         ]
       ]
     },
-    "Check Order Exists": {
+    "Check Cart Checkout": {
       "main": [
         [
           {
-            "node": "Record Check Order Step",
+            "node": "Record Check Cart Checkout Step",
             "type": "main",
             "index": 0
           }
         ]
       ]
     },
-    "Record Check Order Step": {
+    "Record Check Cart Checkout Step": {
       "main": [
         [
           {
@@ -307,7 +316,7 @@
       "main": [
         [
           {
-            "node": "Send Discord Reminder",
+            "node": "Send Cart Reminder Email",
             "type": "main",
             "index": 0
           }
@@ -321,7 +330,7 @@
         ]
       ]
     },
-    "Send Discord Reminder": {
+    "Send Cart Reminder Email": {
       "main": [
         [
           {

@@ -75,7 +75,7 @@ export function WorkflowRunDetail({ workspaceSlug, runId }: { workspaceSlug: str
 
   const descriptionByWorkflow: Record<string, string> = {
     "order-validation": "Shopify Order → AI Validation → Inventory Check → Shipment → Notification.",
-    "cart-reminder": "Shopify Checkout → Wait → Check Order → Discord Reminder.",
+    "cart-reminder": "Shopify Add to Cart → Wait → Check Recent Orders → Email Reminder.",
   };
 
   return (

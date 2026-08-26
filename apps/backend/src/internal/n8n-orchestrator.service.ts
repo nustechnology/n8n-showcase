@@ -11,7 +11,8 @@ export interface StartOrderValidationRunInput {
 
 export interface StartCartReminderRunInput {
   tenantId: string;
-  checkoutToken: string;
+  cartToken: string;
+  triggeredAt: string;
   customerEmail: string | null;
   customerName: string | null;
   items: { name: string; quantity: number }[];
@@ -72,7 +73,7 @@ export class N8nOrchestratorService {
     }
 
     this.logger.log(
-      `Started cart-reminder workflow run for checkout ${input.checkoutToken} (correlationId=${input.correlationId})`,
+      `Started cart-reminder workflow run for cart ${input.cartToken} (correlationId=${input.correlationId})`,
     );
   }
 }

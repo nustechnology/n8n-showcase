@@ -17,7 +17,7 @@ const WORKFLOWS: Record<string, { label: string; description: string; fixture: u
   },
   "cart-reminder": {
     label: "Cart Reminder",
-    description: "Shopify Checkout → Wait → Check Order → Discord Reminder.",
+    description: "Shopify Add to Cart → Wait → Check Recent Orders → Email Reminder.",
     fixture: cartReminderWorkflow,
   },
 };

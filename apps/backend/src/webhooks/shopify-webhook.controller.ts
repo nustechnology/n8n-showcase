@@ -26,7 +26,7 @@ import { N8nOrchestratorService } from '../internal/n8n-orchestrator.service';
 
 import { RealtimeService } from '../realtime/realtime.service';
 
-import { ShopifyCheckoutPayload, ShopifyOrderPayload } from './shopify-order-payload.types';
+import { ShopifyCartPayload, ShopifyOrderPayload } from './shopify-order-payload.types';
 import { ShopifyWebhookService } from './shopify-webhook.service';
 import { claimWebhookInboundEvent } from './webhook-inbox-claim.util';
 
@@ -152,8 +152,8 @@ export class ShopifyWebhookController {
     return { received: true };
   }
 
-  @Post(':integrationId/checkout')
-  async handleCheckout(
+  @Post(':integrationId/cart')
+  async handleCart(
     @Param('integrationId') integrationId: string,
     @Req() req: RawBodyRequest<Request>,
   ): Promise<{ received: true }> {
@@ -163,8 +163,9 @@ export class ShopifyWebhookController {
     }
 
     const { integration, webhookIdHeader } = resolved;
-    const checkout = resolved.payload as ShopifyCheckoutPayload;
-    const items = (checkout.line_items ?? []).map((item) => ({
+    const cart = resolved.payload as ShopifyCartPayload;
+
+    const items = (cart.line_items ?? []).map((item) => ({
       name: item.title ?? 'Unknown item',
       quantity: item.quantity,
     }));
@@ -172,11 +173,10 @@ export class ShopifyWebhookController {
     try {
       await this.n8nOrchestrator.startCartReminderRun({
         tenantId: integration.tenantId,
-        checkoutToken: checkout.token,
-        customerEmail: checkout.email ?? checkout.customer?.email ?? null,
-        customerName: checkout.customer
-          ? [checkout.customer.first_name, checkout.customer.last_name].filter(Boolean).join(' ') || null
-          : null,
+        cartToken: cart.token,
+        triggeredAt: new Date().toISOString(),
+        customerEmail: null,
+        customerName: null,
         items,
         correlationId: randomUUID(),
       });
@@ -186,14 +186,14 @@ export class ShopifyWebhookController {
       });
     } catch (error) {
       this.logger.error(
-        `Failed to process Shopify checkout webhook for integration ${integrationId}`,
+        `Failed to process Shopify cart webhook for integration ${integrationId}`,
         error as Error,
       );
       await this.prisma.webhookInboundEvent.update({
         where: { source_externalId: { source: 'SHOPIFY', externalId: webhookIdHeader } },
         data: { status: 'FAILED' },
       });
-      throw new ServiceUnavailableException('Failed to process Shopify checkout webhook');
+      throw new ServiceUnavailableException('Failed to process Shopify cart webhook');
     }
 
     return { received: true };

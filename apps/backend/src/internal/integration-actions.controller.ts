@@ -7,12 +7,14 @@ import { InternalThrottlerGuard } from '../common/rate-limit/internal-throttler.
 import { IntegrationActionsService } from './integration-actions.service';
 
 import {
-  CheckCheckoutOrderInput,
-  CheckCheckoutOrderSchema,
+  CheckCartCheckoutInput,
+  CheckCartCheckoutSchema,
   CheckInventoryInput,
   CheckInventorySchema,
   CreateShipmentInput,
   CreateShipmentSchema,
+  SendCartReminderEmailInput,
+  SendCartReminderEmailSchema,
   SendResendEmailInput,
   SendResendEmailSchema,
   SendSlackMessageInput,
@@ -95,11 +97,20 @@ export class IntegrationActionsController {
     return { success: true };
   }
 
-  @Post('shopify/check-checkout-order')
+  @Post('shopify/check-cart-checkout')
   @HttpCode(200)
-  async checkCheckoutOrder(
-    @Body(new ZodValidationPipe(CheckCheckoutOrderSchema)) body: CheckCheckoutOrderInput,
-  ): Promise<{ orderFound: boolean; orderId?: string }> {
-    return this.actions.checkCheckoutOrder(body.tenantId, body.checkoutToken);
+  async checkCartCheckout(
+    @Body(new ZodValidationPipe(CheckCartCheckoutSchema)) body: CheckCartCheckoutInput,
+  ): Promise<{ orderFound: boolean; customerEmail?: string; customerName?: string }> {
+    return this.actions.checkCartCheckout(body.tenantId, body.cartToken);
+  }
+
+  @Post('mailer/send-cart-reminder-email')
+  @HttpCode(200)
+  async sendCartReminderEmail(
+    @Body(new ZodValidationPipe(SendCartReminderEmailSchema)) body: SendCartReminderEmailInput,
+  ): Promise<{ success: true }> {
+    await this.actions.sendCartReminderEmail(body.tenantId, body.toEmail, body.customerName ?? null, body.itemNames);
+    return { success: true };
   }
 }

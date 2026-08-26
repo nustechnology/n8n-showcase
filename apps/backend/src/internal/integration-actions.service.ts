@@ -301,10 +301,10 @@ export class IntegrationActionsService {
     );
   }
 
-  async checkCheckoutOrder(
+  async checkCartCheckout(
     tenantId: string,
-    checkoutToken: string,
-  ): Promise<{ orderFound: boolean; orderId?: string }> {
+    cartToken: string,
+  ): Promise<{ orderFound: boolean; customerEmail?: string; customerName?: string }> {
     const { secret, config } = await this.integrations.getDecryptedCredential(
       tenantId,
       IntegrationProvider.SHOPIFY,
@@ -313,7 +313,48 @@ export class IntegrationActionsService {
     const shop = config.shop as string;
 
     return this.circuitBreaker.fire(IntegrationProvider.SHOPIFY, () =>
-      adapter.checkCheckoutOrder(secret, shop, checkoutToken),
+      adapter.checkCartCheckout(secret, shop, cartToken),
+    );
+  }
+
+  async sendCartReminderEmail(
+    tenantId: string,
+    toEmail: string,
+    customerName: string | null,
+    itemNames: string[],
+  ): Promise<void> {
+    const mailer = await this.prisma.integration.findFirst({
+      where: {
+        tenantId,
+        provider: { in: MAILER_PROVIDERS },
+        status: { in: ['ACTIVE', 'DEGRADED'] },
+      },
+    });
+    if (!mailer) {
+      throw new NotFoundException('No active mailer is connected for this tenant');
+    }
+
+    const { secret, config } = await this.integrations.getDecryptedCredential(
+      tenantId,
+      mailer.provider,
+    );
+    const adapter = this.integrations.getAdapter(mailer.provider);
+    const sendFn = MAILER_ADAPTER_FACTORY[mailer.provider]?.(adapter);
+    if (!sendFn) {
+      throw new NotFoundException(`Mailer provider "${mailer.provider}" cannot send email`);
+    }
+
+    const from = (config.from as string | undefined) ?? 'noreply@n8n-showcase.com';
+    const greeting = customerName ?? 'Customer';
+    const itemList = itemNames.map((name) => `  - ${name}`).join('\n');
+
+    await this.circuitBreaker.fire(mailer.provider, () =>
+      sendFn(secret, {
+        from,
+        to: toEmail,
+        subject: `Your cart is waiting — complete your order`,
+        html: `<p>Hi ${greeting},</p><p>You left the following items in your cart:</p><pre>${itemList}</pre><p>Come back and complete your order before they're gone.</p>`,
+      }),
     );
   }
 

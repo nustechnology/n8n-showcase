@@ -1,4 +1,4 @@
-import { BadGatewayException, Injectable, ServiceUnavailableException } from '@nestjs/common';
+import { BadGatewayException, Injectable, Logger, ServiceUnavailableException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 
 import { IntegrationProvider } from '@prisma/client';
@@ -13,6 +13,7 @@ const SHOPIFY_API_VERSION = '2026-07';
 export class ShopifyAdapter implements OAuthAdapter {
   readonly provider = IntegrationProvider.SHOPIFY;
   readonly authType = 'oauth' as const;
+  private readonly logger = new Logger(ShopifyAdapter.name);
 
   private readonly clientId: string | undefined;
   private readonly clientSecret: string | undefined;
@@ -97,7 +98,7 @@ export class ShopifyAdapter implements OAuthAdapter {
     return { webhookId: String(data.webhook.id) };
   }
 
-  async registerCheckoutWebhook(
+  async registerCartWebhook(
     token: string,
     shop: string,
     callbackUrl: string,
@@ -106,11 +107,11 @@ export class ShopifyAdapter implements OAuthAdapter {
       method: 'POST',
       headers: { 'content-type': 'application/json', 'X-Shopify-Access-Token': token },
       body: JSON.stringify({
-        webhook: { topic: 'checkouts/create', address: callbackUrl, format: 'json' },
+        webhook: { topic: 'carts/update', address: callbackUrl, format: 'json' },
       }),
     });
     if (!res.ok) {
-      throw new BadGatewayException(`Shopify checkout webhook registration failed: ${res.status}`);
+      throw new BadGatewayException(`Shopify cart update webhook registration failed: ${res.status}`);
     }
     const data = (await res.json()) as { webhook: { id: number } };
     return { webhookId: String(data.webhook.id) };
@@ -126,26 +127,39 @@ export class ShopifyAdapter implements OAuthAdapter {
     }
   }
 
-  async checkCheckoutOrder(
+  async checkCartCheckout(
     token: string,
     shop: string,
-    checkoutToken: string,
-  ): Promise<{ orderFound: boolean; orderId?: string }> {
+    cartToken: string,
+  ): Promise<{ orderFound: boolean; customerEmail?: string; customerName?: string }> {
     const res = await fetchWithTimeout(
-      `https://${shop}/admin/api/${SHOPIFY_API_VERSION}/checkouts/${checkoutToken}/order_id.json`,
+      `https://${shop}/admin/api/${SHOPIFY_API_VERSION}/checkouts.json`,
       { headers: { 'X-Shopify-Access-Token': token } },
     );
-    if (res.status === 404) {
-      return { orderFound: false };
-    }
     if (!res.ok) {
-      throw new BadGatewayException(`Shopify checkout order lookup failed: ${res.status}`);
+      throw new BadGatewayException(`Shopify checkouts lookup failed: ${res.status}`);
     }
-    const data = (await res.json()) as { order_id: number | null };
-    if (!data.order_id) {
-      return { orderFound: false };
+    const data = (await res.json()) as {
+      checkouts?: {
+        token: string;
+        cart_token?: string | null;
+        email?: string | null;
+        customer?: { email?: string | null; first_name?: string | null; last_name?: string | null } | null;
+        order_id?: number | null;
+      }[];
+    };
+    const checkout = (data.checkouts ?? []).find((c) => c.cart_token === cartToken);
+    if (!checkout) {
+      return { orderFound: true };
     }
-    return { orderFound: true, orderId: String(data.order_id) };
+    if (checkout.order_id) {
+      return { orderFound: true };
+    }
+    const email = checkout.email ?? checkout.customer?.email ?? null;
+    const name = checkout.customer
+      ? [checkout.customer.first_name, checkout.customer.last_name].filter(Boolean).join(' ') || null
+      : null;
+    return { orderFound: false, customerEmail: email ?? undefined, customerName: name ?? undefined };
   }
 
   // Writes fulfillment/tracking info back into Shopify — scoped in the
@@ -345,15 +359,15 @@ export class ShopifyAdapter implements OAuthAdapter {
       );
     }
 
-    const checkoutWebhookId = config.shopifyCheckoutWebhookId as string | undefined;
-    if (checkoutWebhookId) {
-      const checkoutWebhookRes = await fetchWithTimeout(
-        `https://${shop}/admin/api/${SHOPIFY_API_VERSION}/webhooks/${checkoutWebhookId}.json`,
+    const cartWebhookId = config.shopifyCartWebhookId as string | undefined;
+    if (cartWebhookId) {
+      const cartWebhookRes = await fetchWithTimeout(
+        `https://${shop}/admin/api/${SHOPIFY_API_VERSION}/webhooks/${cartWebhookId}.json`,
         { headers: { 'X-Shopify-Access-Token': credential } },
       );
-      if (!checkoutWebhookRes.ok) {
+      if (!cartWebhookRes.ok) {
         throw new BadGatewayException(
-          'Shopify credentials are valid, but the checkout webhook is missing or was removed — disconnect and reconnect to finish setup.',
+          'Shopify credentials are valid, but the cart webhook is missing or was removed — disconnect and reconnect to finish setup.',
         );
       }
     }

@@ -32,8 +32,16 @@ export const SendResendEmailSchema = z.object({
 });
 export type SendResendEmailInput = z.infer<typeof SendResendEmailSchema>;
 
-export const CheckCheckoutOrderSchema = z.object({
+export const CheckCartCheckoutSchema = z.object({
   tenantId: z.string().min(1),
-  checkoutToken: z.string().min(1),
+  cartToken: z.string().min(1),
 });
-export type CheckCheckoutOrderInput = z.infer<typeof CheckCheckoutOrderSchema>;
+export type CheckCartCheckoutInput = z.infer<typeof CheckCartCheckoutSchema>;
+
+export const SendCartReminderEmailSchema = z.object({
+  tenantId: z.string().min(1),
+  toEmail: z.string().email(),
+  customerName: z.string().nullable().optional(),
+  itemNames: z.array(z.string()),
+});
+export type SendCartReminderEmailInput = z.infer<typeof SendCartReminderEmailSchema>;

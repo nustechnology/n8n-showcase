@@ -15,7 +15,7 @@ export const STEP_KEYS = [
   'update_shopify',
   'notify_slack',
   'notify_email',
-  'check_checkout_order',
+  'check_cart_checkout',
   'send_cart_reminder',
 ] as const;
 
@@ -26,7 +26,7 @@ export const STEP_DEFINITIONS: Record<(typeof STEP_KEYS)[number], { label: strin
   update_shopify: { label: 'Update Shopify Order', sequence: 4 },
   notify_slack: { label: 'Notify Slack', sequence: 5 },
   notify_email: { label: 'Notify Email', sequence: 6 },
-  check_checkout_order: { label: 'Check Checkout Order', sequence: 1 },
+  check_cart_checkout: { label: 'Check Cart Checkout', sequence: 1 },
   send_cart_reminder: { label: 'Send Cart Reminder', sequence: 2 },
 };
 

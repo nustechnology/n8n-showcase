@@ -349,7 +349,7 @@ export class IntegrationsService {
     if (!integration) return; // already disconnected — idempotent
 
     if (provider === IntegrationProvider.SHOPIFY && integration.credential) {
-      const config = integration.config as { shop?: string; shopifyWebhookId?: string; shopifyCheckoutWebhookId?: string };
+      const config = integration.config as { shop?: string; shopifyWebhookId?: string; shopifyCartWebhookId?: string };
       if (config.shop) {
         try {
           const token = this.credentials.decrypt(integration.credential, integration.id);
@@ -357,8 +357,8 @@ export class IntegrationsService {
           if (config.shopifyWebhookId) {
             await adapter.unregisterWebhook?.(token, config.shop, config.shopifyWebhookId);
           }
-          if (config.shopifyCheckoutWebhookId) {
-            await adapter.unregisterWebhook?.(token, config.shop, config.shopifyCheckoutWebhookId);
+          if (config.shopifyCartWebhookId) {
+            await adapter.unregisterWebhook?.(token, config.shop, config.shopifyCartWebhookId);
           }
         } catch (error) {
           // Best-effort — never block the disconnect on Shopify-side cleanup.
@@ -536,17 +536,17 @@ export class IntegrationsService {
       if (!webhookId) {
         throw new Error('Shopify adapter did not return a webhookId');
       }
-      const shopifyAdapter = adapter as unknown as { registerCheckoutWebhook?: (token: string, shop: string, callbackUrl: string) => Promise<{ webhookId: string }> };
-      let checkoutWebhookId: string | undefined;
-    const checkoutCallbackUrl = `${callbackUrl}/checkout`;
+      const shopifyAdapter = adapter as unknown as { registerCartWebhook?: (token: string, shop: string, callbackUrl: string) => Promise<{ webhookId: string }> };
+      let cartWebhookId: string | undefined;
+    const cartCallbackUrl = `${callbackUrl}/cart`;
     try {
-      const result = await shopifyAdapter.registerCheckoutWebhook?.(token, shop, checkoutCallbackUrl);
-        checkoutWebhookId = result?.webhookId;
-        this.logger.log(`Registered checkout webhook for integration ${integration.id}: ${checkoutWebhookId}`);
-      } catch (checkoutErr) {
+      const result = await shopifyAdapter.registerCartWebhook?.(token, shop, cartCallbackUrl);
+        cartWebhookId = result?.webhookId;
+        this.logger.log(`Registered cart update webhook for integration ${integration.id}: ${cartWebhookId}`);
+      } catch (cartErr) {
         this.logger.warn(
-          `Shopify checkout webhook registration failed for integration ${integration.id} — cart-reminder won't fire`,
-          checkoutErr as Error,
+          `Shopify cart webhook registration failed for integration ${integration.id} — cart-reminder won't fire`,
+          cartErr as Error,
         );
       }
       await this.prisma.integration.update({
@@ -557,7 +557,7 @@ export class IntegrationsService {
           oauthStateExpiresAt: null,
           lastErrorMessage: null,
           lastCheckedAt: new Date(),
-          config: { shop, shopifyWebhookId: webhookId, shopifyCheckoutWebhookId: checkoutWebhookId ?? undefined },
+          config: { shop, shopifyWebhookId: webhookId, shopifyCartWebhookId: cartWebhookId ?? undefined },
         },
       });
     } catch (error) {
