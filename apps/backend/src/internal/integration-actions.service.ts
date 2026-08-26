@@ -208,9 +208,31 @@ export class IntegrationActionsService {
       },
     };
 
-    return this.circuitBreaker.fire(shipper.provider, () =>
+    const result = await this.circuitBreaker.fire(shipper.provider, () =>
       createShipmentFn(secret, orderInput, fromAddress),
     );
+
+    await this.prisma.order.update({
+      where: { id: order.id },
+      data: { trackingNumber: result.trackingNumber, carrier: result.carrier },
+    });
+
+    return result;
+  }
+
+  // No tenantId on this lookup — trackingNumber is a carrier-issued,
+  // globally-unique identifier (@unique in schema.prisma), same precedent as
+  // the Order.id lookup in internal.service.ts's updateOrderStatus. Used to
+  // resolve an inbound EasyPost tracker webhook (which has no tenantId) back
+  // to the order it belongs to.
+  async resolveOrderByTrackingNumber(
+    trackingNumber: string,
+  ): Promise<{ tenantId: string; orderId: string }> {
+    const order = await this.prisma.order.findUnique({ where: { trackingNumber } });
+    if (!order) {
+      throw new NotFoundException('No order found for this tracking number');
+    }
+    return { tenantId: order.tenantId, orderId: order.id };
   }
 
   async updateShopifyOrder(
@@ -297,6 +319,48 @@ export class IntegrationActionsService {
         to: email,
         subject: `Your order ${orderName} has shipped`,
         html: `<p>Your order <strong>${orderName}</strong> has been fulfilled and is on its way.</p><p>Thank you for shopping with us.</p>`,
+      }),
+    );
+  }
+
+  async sendDeliveredEmail(tenantId: string, orderId: string): Promise<void> {
+    const order = await this.getOrderOrThrow(tenantId, orderId);
+    const payload = order.rawPayload as unknown as ShopifyOrderPayload;
+    const email = payload.email ?? payload.customer?.email ?? null;
+    if (!email) {
+      throw new NotFoundException('Order has no customer email address');
+    }
+
+    const mailer = await this.prisma.integration.findFirst({
+      where: {
+        tenantId,
+        provider: { in: MAILER_PROVIDERS },
+        status: { in: ['ACTIVE', 'DEGRADED'] },
+      },
+    });
+    if (!mailer) {
+      throw new NotFoundException('No active mailer is connected for this tenant');
+    }
+
+    const { secret, config } = await this.integrations.getDecryptedCredential(
+      tenantId,
+      mailer.provider,
+    );
+    const adapter = this.integrations.getAdapter(mailer.provider);
+    const sendFn = MAILER_ADAPTER_FACTORY[mailer.provider]?.(adapter);
+    if (!sendFn) {
+      throw new NotFoundException(`Mailer provider "${mailer.provider}" cannot send email`);
+    }
+
+    const from = (config.from as string | undefined) ?? 'onboarding@resend.dev';
+    const orderName = payload.name ?? `#${order.shopifyOrderId}`;
+
+    await this.circuitBreaker.fire(mailer.provider, () =>
+      sendFn(secret, {
+        from,
+        to: email,
+        subject: `Your order ${orderName} has been delivered`,
+        html: `<p>Your order <strong>${orderName}</strong> has been delivered.</p><p>Thank you for shopping with us.</p>`,
       }),
     );
   }

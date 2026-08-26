@@ -13,6 +13,8 @@ import {
   CheckInventorySchema,
   CreateShipmentInput,
   CreateShipmentSchema,
+  ResolveOrderByTrackingInput,
+  ResolveOrderByTrackingSchema,
   SendCartReminderEmailInput,
   SendCartReminderEmailSchema,
   SendResendEmailInput,
@@ -61,6 +63,14 @@ export class IntegrationActionsController {
     return this.actions.createShipment(body.tenantId, body.orderId);
   }
 
+  @Post('easypost/resolve-tracking')
+  @HttpCode(200)
+  resolveTracking(
+    @Body(new ZodValidationPipe(ResolveOrderByTrackingSchema)) body: ResolveOrderByTrackingInput,
+  ) {
+    return this.actions.resolveOrderByTrackingNumber(body.trackingNumber);
+  }
+
   @Post('shopify/update-order')
   @HttpCode(200)
   async updateOrder(
@@ -94,6 +104,15 @@ export class IntegrationActionsController {
     @Body(new ZodValidationPipe(SendResendEmailSchema)) body: SendResendEmailInput,
   ): Promise<{ success: true }> {
     await this.actions.sendResendEmail(body.tenantId, body.orderId);
+    return { success: true };
+  }
+
+  @Post('mailer/send-delivered-email')
+  @HttpCode(200)
+  async sendDeliveredEmail(
+    @Body(new ZodValidationPipe(SendResendEmailSchema)) body: SendResendEmailInput,
+  ): Promise<{ success: true }> {
+    await this.actions.sendDeliveredEmail(body.tenantId, body.orderId);
     return { success: true };
   }
 

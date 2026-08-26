@@ -26,7 +26,10 @@ const LOCAL_TEST_FALLBACK_ADDRESS = {
 
 describe('IntegrationActionsService', () => {
   let service: IntegrationActionsService;
-  let prisma: { order: { findFirst: jest.Mock }; integration: { findFirst: jest.Mock } };
+  let prisma: {
+    order: { findFirst: jest.Mock; update: jest.Mock; findUnique: jest.Mock };
+    integration: { findFirst: jest.Mock };
+  };
   let integrations: {
     getDecryptedCredential: jest.Mock;
     getAdapter: jest.Mock;
@@ -39,7 +42,10 @@ describe('IntegrationActionsService', () => {
   let slackAdapter: { sendMessage: jest.Mock };
 
   beforeEach(async () => {
-    prisma = { order: { findFirst: jest.fn() }, integration: { findFirst: jest.fn() } };
+    prisma = {
+      order: { findFirst: jest.fn(), update: jest.fn(), findUnique: jest.fn() },
+      integration: { findFirst: jest.fn() },
+    };
     zohoAdapter = { checkInventory: jest.fn(), refreshToken: jest.fn() };
     easyPostAdapter = { createShipment: jest.fn() };
     shopifyAdapter = { updateOrder: jest.fn() };

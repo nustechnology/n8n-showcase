@@ -770,6 +770,145 @@
       "retryOnFail": true,
       "maxTries": 3,
       "waitBetweenTries": 1000
+    },
+    {
+      "id": "c1d2e3f4-a5b6-4c7d-8e9f-0a1b2c3d4e5f",
+      "name": "EasyPost Tracker Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        250,
+        700
+      ],
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "easypost",
+        "authentication": "none",
+        "responseMode": "onReceived",
+        "options": {}
+      },
+      "webhookId": "b6f3a9d2-4c1e-4a7b-9d3f-2e8c6a1b5f0d"
+    },
+    {
+      "id": "d2e3f4a5-b6c7-4d8e-9f0a-1b2c3d4e5f6a",
+      "name": "IF Delivered",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        500,
+        700
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "f2a1c9e0-4444-4a1a-9a1a-1a1a1a1a1a1a",
+              "leftValue": "={{ $json.body.result.status }}",
+              "rightValue": "delivered",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "e3f4a5b6-c7d8-4e9f-0a1b-2c3d4e5f6a7b",
+      "name": "Resolve Order (EasyPost)",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        750,
+        700
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "http://host.docker.internal:3000/internal/integrations/easypost/resolve-tracking",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ trackingNumber: $json.body.result.tracking_code }) }}",
+        "options": {}
+      },
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "R8ikTjUCKdJP6lBR",
+          "name": "Backend Internal Token"
+        }
+      },
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 1000
+    },
+    {
+      "id": "f4a5b6c7-d8e9-4f0a-1b2c-3d4e5f6a7b8c",
+      "name": "Send Delivered Email",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1000,
+        700
+      ],
+      "onError": "continueRegularOutput",
+      "parameters": {
+        "method": "POST",
+        "url": "http://host.docker.internal:3000/internal/integrations/mailer/send-delivered-email",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ tenantId: $json.tenantId, orderId: $json.orderId }) }}",
+        "options": {}
+      },
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "R8ikTjUCKdJP6lBR",
+          "name": "Backend Internal Token"
+        }
+      },
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 5000
+    },
+    {
+      "id": "a5b6c7d8-e9f0-4a1b-2c3d-4e5f6a7b8c9d",
+      "name": "Notify Alert (Delivered)",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1250,
+        700
+      ],
+      "onError": "continueRegularOutput",
+      "parameters": {
+        "method": "POST",
+        "url": "http://host.docker.internal:3000/internal/integrations/alerts/send-message",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ tenantId: $('Resolve Order (EasyPost)').item.json.tenantId, message: 'Order ' + $('Resolve Order (EasyPost)').item.json.orderId + ' has been delivered.' }) }}",
+        "options": {}
+      },
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "R8ikTjUCKdJP6lBR",
+          "name": "Backend Internal Token"
+        }
+      },
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 5000
     }
   ],
   "connections": {
@@ -1070,6 +1209,51 @@
         [
           {
             "node": "Close Workflow Run",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "EasyPost Tracker Webhook": {
+      "main": [
+        [
+          {
+            "node": "IF Delivered",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "IF Delivered": {
+      "main": [
+        [
+          {
+            "node": "Resolve Order (EasyPost)",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        []
+      ]
+    },
+    "Resolve Order (EasyPost)": {
+      "main": [
+        [
+          {
+            "node": "Send Delivered Email",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Send Delivered Email": {
+      "main": [
+        [
+          {
+            "node": "Notify Alert (Delivered)",
             "type": "main",
             "index": 0
           }

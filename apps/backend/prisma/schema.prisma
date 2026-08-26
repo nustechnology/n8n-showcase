@@ -300,6 +300,12 @@ model Order {
   currency       String?
   totalAmount    Decimal?    @map("total_amount") @db.Decimal(12, 2)
   rawPayload     Json        @map("raw_payload")
+  // Set once a shipment is bought (createShipment); trackingNumber is globally
+  // unique (carrier-issued), so it's the one field on this model safe to look
+  // up without a tenantId, same precedent as the Order.id lookup in
+  // internal.service.ts's updateOrderStatus.
+  trackingNumber String?     @unique @map("tracking_number")
+  carrier        String?     @map("carrier")
   createdAt      DateTime    @default(now()) @map("created_at")
   updatedAt      DateTime    @updatedAt @map("updated_at")
 

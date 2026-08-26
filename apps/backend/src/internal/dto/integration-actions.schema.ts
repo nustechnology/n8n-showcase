@@ -45,3 +45,8 @@ export const SendCartReminderEmailSchema = z.object({
   itemNames: z.array(z.string()),
 });
 export type SendCartReminderEmailInput = z.infer<typeof SendCartReminderEmailSchema>;
+
+export const ResolveOrderByTrackingSchema = z.object({
+  trackingNumber: z.string().min(1),
+});
+export type ResolveOrderByTrackingInput = z.infer<typeof ResolveOrderByTrackingSchema>;
