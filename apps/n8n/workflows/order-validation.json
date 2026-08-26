@@ -666,7 +666,7 @@
       "onError": "continueRegularOutput",
       "parameters": {
         "method": "POST",
-        "url": "http://host.docker.internal:3000/internal/integrations/resend/send-email",
+        "url": "http://host.docker.internal:3000/internal/integrations/mailer/send-email",
         "authentication": "genericCredentialType",
         "genericAuthType": "httpHeaderAuth",
         "sendBody": true,
