@@ -1,10 +1,13 @@
-import { Controller, Get, HttpCode, Param, Post, Sse } from '@nestjs/common';
+import { Controller, Get, HttpCode, Param, Post, Query, Sse } from '@nestjs/common';
 
 import { RequirePermission } from '../auth/decorators/require-permission.decorator';
 
 import { CurrentTenant } from '../common/decorators/current-tenant.decorator';
+import { ZodValidationPipe } from '../common/pipes/zod-validation.pipe';
 
 import { WorkflowRunsService } from './workflow-runs.service';
+
+import { ListWorkflowRunsInput, ListWorkflowRunsSchema } from './dto/list-workflow-runs.schema';
 
 @Controller('workflow-runs')
 export class WorkflowRunsController {
@@ -12,8 +15,11 @@ export class WorkflowRunsController {
 
   @Get()
   @RequirePermission('orders:read')
-  findAll(@CurrentTenant() tenantId: string) {
-    return this.workflowRuns.findAll(tenantId);
+  findAll(
+    @CurrentTenant() tenantId: string,
+    @Query(new ZodValidationPipe(ListWorkflowRunsSchema)) query: ListWorkflowRunsInput,
+  ) {
+    return this.workflowRuns.findAll(tenantId, query);
   }
 
   @Get(':id')

@@ -3,8 +3,19 @@ import type { ApiFetch } from "@/hooks/use-api-client";
 import { orderSchema, orderTimelineResponseSchema, ordersResponseSchema } from "./schemas";
 import type { OrderStatus } from "./types";
 
-export async function listOrders(api: ApiFetch) {
-  const data = await api<unknown>("/orders");
+export interface ListOrdersParams {
+  take: number;
+  skip: number;
+  status?: OrderStatus;
+  search?: string;
+}
+
+export async function listOrders(api: ApiFetch, params: ListOrdersParams) {
+  const query = new URLSearchParams({ take: String(params.take), skip: String(params.skip) });
+  if (params.status) query.set("status", params.status);
+  if (params.search) query.set("search", params.search);
+
+  const data = await api<unknown>(`/orders?${query.toString()}`);
   return ordersResponseSchema.parse(data);
 }
 

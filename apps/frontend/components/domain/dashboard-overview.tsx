@@ -23,23 +23,29 @@ function isWithinLast24h(iso: string): boolean {
   return Date.now() - new Date(iso).getTime() <= 24 * 60 * 60 * 1000;
 }
 
+// The dashboard aggregates stats over the recent set rather than paginating
+// — mirrors the backend's old MAX_ORDERS_RETURNED/MAX_WORKFLOW_RUNS_RETURNED
+// caps, now expressed as an explicit `take` override on the paginated hooks.
+const DASHBOARD_SAMPLE_SIZE = 100;
+
 export function DashboardOverview({ workspaceSlug }: { workspaceSlug: string }) {
   const integrations = useIntegrations();
-  const orders = useOrders();
-  const runs = useWorkflowRuns();
+  const orders = useOrders({ page: 1, take: DASHBOARD_SAMPLE_SIZE });
+  const runs = useWorkflowRuns({ page: 1, take: DASHBOARD_SAMPLE_SIZE });
 
   const loading = integrations.isPending || orders.isPending || runs.isPending;
 
-  const ordersToday = orders.data?.filter((o) => isToday(o.createdAt)).length ?? 0;
-  const activeRuns = runs.data?.filter((r) => r.status === "PENDING" || r.status === "RUNNING").length ?? 0;
+  const ordersToday = orders.data?.items.filter((o) => isToday(o.createdAt)).length ?? 0;
+  const activeRuns = runs.data?.items.filter((r) => r.status === "PENDING" || r.status === "RUNNING").length ?? 0;
   const needsAttention = integrations.data?.filter((i) => i.status === "DEGRADED" || i.status === "ERROR").length ?? 0;
 
-  const recentRuns = runs.data?.filter((r) => isWithinLast24h(r.startedAt) && (r.status === "SUCCEEDED" || r.status === "FAILED")) ?? [];
+  const recentRuns =
+    runs.data?.items.filter((r) => isWithinLast24h(r.startedAt) && (r.status === "SUCCEEDED" || r.status === "FAILED")) ?? [];
   const successRate24h =
     recentRuns.length === 0 ? "—" : `${Math.round((recentRuns.filter((r) => r.status === "SUCCEEDED").length / recentRuns.length) * 100)}%`;
 
   const hasActiveIntegration = integrations.data?.some((i) => i.status === "ACTIVE") ?? false;
-  const hasOrders = (orders.data?.length ?? 0) > 0;
+  const hasOrders = (orders.data?.total ?? 0) > 0;
 
   return (
     <div className="space-y-6">

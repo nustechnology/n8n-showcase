@@ -5,19 +5,38 @@ import { useOrganization } from "@clerk/nextjs";
 
 import { useApiClient } from "@/hooks/use-api-client";
 
+import type { RunStatus } from "@/lib/status";
+
 import * as api from "./api";
+
+export const WORKFLOW_RUNS_PAGE_SIZE = 10;
 
 function useWorkspaceWorkflowRunsKey() {
   const { organization } = useOrganization();
   return ["workflow-runs", organization?.id] as const;
 }
 
-export function useWorkflowRuns() {
+export interface UseWorkflowRunsParams {
+  page: number;
+  // Overridable for callers that need a wider window than one page — e.g.
+  // the dashboard's stat tiles, which aggregate over the recent set rather
+  // than paginating (mirrors the backend's old MAX_WORKFLOW_RUNS_RETURNED cap).
+  take?: number;
+  status?: RunStatus;
+}
+
+export function useWorkflowRuns({ page, take = WORKFLOW_RUNS_PAGE_SIZE, status }: UseWorkflowRunsParams) {
   const apiFetch = useApiClient();
   const key = useWorkspaceWorkflowRunsKey();
   return useQuery({
-    queryKey: key,
-    queryFn: () => api.listWorkflowRuns(apiFetch),
+    queryKey: [...key, { page, take, status }],
+    queryFn: () =>
+      api.listWorkflowRuns(apiFetch, {
+        take,
+        skip: (page - 1) * take,
+        status,
+      }),
+    placeholderData: (previousData) => previousData,
   });
 }
 

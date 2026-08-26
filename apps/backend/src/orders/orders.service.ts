@@ -6,13 +6,10 @@ import { PrismaService } from '../prisma/prisma.service';
 
 import { RealtimeService } from '../realtime/realtime.service';
 
+import { ListOrdersInput } from './dto/list-orders.schema';
 import { UpdateOrderStatusInput } from './dto/update-order-status.schema';
 
-// No pagination UI exists yet — the frontend fetches this once and renders
-// the whole array (see orders-list.tsx). This cap just bounds the query and
-// response size for a tenant with a very large order history; it isn't a
-// substitute for real pagination if that's ever needed.
-const MAX_ORDERS_RETURNED = 100;
+const DEFAULT_TAKE = 10;
 
 @Injectable()
 export class OrdersService {
@@ -21,12 +18,34 @@ export class OrdersService {
     private readonly realtime: RealtimeService,
   ) {}
 
-  findAll(tenantId: string) {
-    return this.prisma.order.findMany({
-      where: { tenantId },
-      orderBy: { createdAt: 'desc' },
-      take: MAX_ORDERS_RETURNED,
-    });
+  async findAll(tenantId: string, query: ListOrdersInput) {
+    const take = query.take ?? DEFAULT_TAKE;
+    const skip = query.skip ?? 0;
+    const where: Prisma.OrderWhereInput = {
+      tenantId,
+      ...(query.status ? { status: query.status } : {}),
+      ...(query.search
+        ? {
+            OR: [
+              { shopifyOrderId: { contains: query.search, mode: 'insensitive' } },
+              { customerName: { contains: query.search, mode: 'insensitive' } },
+              { customerEmail: { contains: query.search, mode: 'insensitive' } },
+            ],
+          }
+        : {}),
+    };
+
+    const [items, total] = await Promise.all([
+      this.prisma.order.findMany({
+        where,
+        orderBy: { createdAt: 'desc' },
+        take,
+        skip,
+      }),
+      this.prisma.order.count({ where }),
+    ]);
+
+    return { items, total };
   }
 
   async findOne(tenantId: string, id: string) {

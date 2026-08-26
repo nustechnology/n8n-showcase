@@ -34,7 +34,10 @@ export const orderSchema = z.object({
   updatedAt: z.string(),
 });
 
-export const ordersResponseSchema = z.array(orderSchema);
+export const ordersResponseSchema = z.object({
+  items: z.array(orderSchema),
+  total: z.number(),
+});
 
 export const orderEventSchema = z.object({
   id: z.string(),

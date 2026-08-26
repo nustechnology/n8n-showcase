@@ -11,12 +11,12 @@ import { WorkflowRunsService } from './workflow-runs.service';
 
 describe('WorkflowRunsService', () => {
   let service: WorkflowRunsService;
-  let prisma: { workflowRun: { findMany: jest.Mock; findFirst: jest.Mock } };
+  let prisma: { workflowRun: { findMany: jest.Mock; findFirst: jest.Mock; count: jest.Mock } };
   let n8nOrchestrator: { startOrderValidationRun: jest.Mock };
   let realtime: { streamWorkflowRun: jest.Mock };
 
   beforeEach(async () => {
-    prisma = { workflowRun: { findMany: jest.fn(), findFirst: jest.fn() } };
+    prisma = { workflowRun: { findMany: jest.fn(), findFirst: jest.fn(), count: jest.fn() } };
     n8nOrchestrator = { startOrderValidationRun: jest.fn() };
     realtime = { streamWorkflowRun: jest.fn() };
 
@@ -34,7 +34,8 @@ describe('WorkflowRunsService', () => {
 
   it('findAll scopes to the tenant', async () => {
     prisma.workflowRun.findMany.mockResolvedValue([]);
-    await service.findAll('t_1');
+    prisma.workflowRun.count.mockResolvedValue(0);
+    await service.findAll('t_1', {});
     expect(prisma.workflowRun.findMany).toHaveBeenCalledWith(
       expect.objectContaining({ where: { tenantId: 't_1' } }),
     );
@@ -46,10 +47,24 @@ describe('WorkflowRunsService', () => {
   // which fails Zod parsing on every call to GET /workflow-runs.
   it('findAll includes steps, ordered by sequence', async () => {
     prisma.workflowRun.findMany.mockResolvedValue([]);
-    await service.findAll('t_1');
+    prisma.workflowRun.count.mockResolvedValue(0);
+    await service.findAll('t_1', {});
     expect(prisma.workflowRun.findMany).toHaveBeenCalledWith(
       expect.objectContaining({ include: { steps: { orderBy: { sequence: 'asc' } } } }),
     );
+  });
+
+  it('findAll defaults to 10 per page, returns the total count, and filters by status', async () => {
+    prisma.workflowRun.findMany.mockResolvedValue([]);
+    prisma.workflowRun.count.mockResolvedValue(37);
+
+    const result = await service.findAll('t_1', { status: 'FAILED' });
+
+    expect(prisma.workflowRun.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({ where: { tenantId: 't_1', status: 'FAILED' }, take: 10, skip: 0 }),
+    );
+    expect(prisma.workflowRun.count).toHaveBeenCalledWith({ where: { tenantId: 't_1', status: 'FAILED' } });
+    expect(result).toEqual({ items: [], total: 37 });
   });
 
   it('findOne 404s when the run does not belong to this tenant', async () => {

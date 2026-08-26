@@ -28,4 +28,7 @@ export const workflowRunSchema = z.object({
   steps: z.array(workflowRunStepSchema),
 });
 
-export const workflowRunsResponseSchema = z.array(workflowRunSchema);
+export const workflowRunsResponseSchema = z.object({
+  items: z.array(workflowRunSchema),
+  total: z.number(),
+});

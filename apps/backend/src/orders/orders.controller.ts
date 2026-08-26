@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Param, Patch } from '@nestjs/common';
+import { Body, Controller, Get, Param, Patch, Query } from '@nestjs/common';
 
 import { RequirePermission } from '../auth/decorators/require-permission.decorator';
 
@@ -8,6 +8,7 @@ import { ZodValidationPipe } from '../common/pipes/zod-validation.pipe';
 
 import { OrdersService } from './orders.service';
 
+import { ListOrdersInput, ListOrdersSchema } from './dto/list-orders.schema';
 import { UpdateOrderStatusInput, UpdateOrderStatusSchema } from './dto/update-order-status.schema';
 
 @Controller('orders')
@@ -16,8 +17,11 @@ export class OrdersController {
 
   @Get()
   @RequirePermission('orders:read')
-  findAll(@CurrentTenant() tenantId: string) {
-    return this.orders.findAll(tenantId);
+  findAll(
+    @CurrentTenant() tenantId: string,
+    @Query(new ZodValidationPipe(ListOrdersSchema)) query: ListOrdersInput,
+  ) {
+    return this.orders.findAll(tenantId, query);
   }
 
   @Get(':id')

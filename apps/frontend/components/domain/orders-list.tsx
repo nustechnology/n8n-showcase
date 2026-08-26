@@ -1,16 +1,16 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 import Link from "next/link";
 import { AlertTriangle, Package } from "lucide-react";
-import { parseAsString, parseAsStringLiteral, useQueryState } from "nuqs";
+import { parseAsInteger, parseAsString, parseAsStringLiteral, useQueryState } from "nuqs";
 import { toast } from "sonner";
 
-import { useBulkUpdateOrderStatus, useOrders } from "@/features/orders/hooks";
+import { ORDERS_PAGE_SIZE, useBulkUpdateOrderStatus, useOrders } from "@/features/orders/hooks";
 import { orderStatusSchema } from "@/features/orders/schemas";
 import { mapOrderStatus } from "@/features/orders/status";
-import type { Order, OrderStatus } from "@/features/orders/types";
+import type { OrderStatus } from "@/features/orders/types";
 
 import { usePermission } from "@/hooks/use-permission";
 
@@ -24,35 +24,46 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { StatusBadge } from "@/components/patterns/status-badge";
 import { EmptyState } from "@/components/patterns/empty-state";
+import { PaginationControls } from "@/components/patterns/pagination-controls";
 import { OrderValidationFailureDialog } from "@/components/domain/order-validation-failure-dialog";
 import { OVERRIDE_TARGETS } from "@/components/domain/order-status-override";
 
-// "ALL" is a UI-only sentinel — never sent to the backend, which has no
-// filter query params at all (both filters below run client-side over the
-// already-fetched full list, matching this app's current scale).
+// "ALL" is a UI-only sentinel — never sent to the backend.
 const STATUS_FILTER_VALUES = ["ALL", ...orderStatusSchema.options] as const;
 type StatusFilterValue = (typeof STATUS_FILTER_VALUES)[number];
 
-function matchesSearch(order: Order, search: string): boolean {
-  const q = search.trim().toLowerCase();
-  if (!q) return true;
-  return (
-    order.shopifyOrderId.toLowerCase().includes(q) ||
-    (order.customerName?.toLowerCase().includes(q) ?? false) ||
-    (order.customerEmail?.toLowerCase().includes(q) ?? false)
-  );
-}
+const SEARCH_DEBOUNCE_MS = 350;
 
 export function OrdersList({ workspaceSlug }: { workspaceSlug: string }) {
-  const { data: orders, isPending, isError, error } = useOrders();
   const canOverride = usePermission("order:override");
   const bulkUpdate = useBulkUpdateOrderStatus();
 
+  const [page, setPage] = useQueryState("page", parseAsInteger.withDefault(1));
   const [statusFilter, setStatusFilter] = useQueryState(
     "status",
     parseAsStringLiteral(STATUS_FILTER_VALUES).withDefault("ALL")
   );
   const [search, setSearch] = useQueryState("q", parseAsString.withDefault(""));
+
+  // The search box updates the URL (and `search`, below) on every keystroke
+  // so it stays shareable/bookmarkable, but the query itself only fires
+  // SEARCH_DEBOUNCE_MS after typing stops — otherwise every keystroke would
+  // hit GET /orders now that filtering happens server-side.
+  const [debouncedSearch, setDebouncedSearch] = useState(search);
+  const debounceRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+
+  useEffect(() => {
+    clearTimeout(debounceRef.current);
+    debounceRef.current = setTimeout(() => setDebouncedSearch(search), SEARCH_DEBOUNCE_MS);
+
+    return () => clearTimeout(debounceRef.current);
+  }, [search]);
+
+  const { data, isPending, isError, error } = useOrders({
+    page,
+    status: statusFilter === "ALL" ? undefined : statusFilter,
+    search: debouncedSearch,
+  });
 
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [bulkTarget, setBulkTarget] = useState<OrderStatus | null>(null);
@@ -82,22 +93,21 @@ export function OrdersList({ workspaceSlug }: { workspaceSlug: string }) {
     );
   }
 
-  if (orders.length === 0) {
-    return (
-      <EmptyState
-        icon={Package}
-        title="No orders yet"
-        description="Connect Shopify to start seeing orders flow through validation, inventory, and shipment."
-      />
-    );
+  const hasActiveFilters = statusFilter !== "ALL" || debouncedSearch.trim().length > 0;
+  const orders = data.items;
+
+  function handleStatusFilterChange(value: StatusFilterValue) {
+    setStatusFilter(value);
+    setPage(1);
   }
 
-  const filtered = orders
-    .filter((order) => statusFilter === "ALL" || order.status === statusFilter)
-    .filter((order) => matchesSearch(order, search));
+  function handleSearchChange(value: string) {
+    setSearch(value || null);
+    setPage(1);
+  }
 
   function toggleAll() {
-    setSelected((prev) => (prev.size === filtered.length ? new Set() : new Set(filtered.map((o) => o.id))));
+    setSelected((prev) => (prev.size === orders.length ? new Set() : new Set(orders.map((o) => o.id))));
   }
 
   function toggleOne(id: string) {
@@ -136,12 +146,12 @@ export function OrdersList({ workspaceSlug }: { workspaceSlug: string }) {
         <Input
           placeholder="Search order # or customer…"
           value={search}
-          onChange={(e) => setSearch(e.target.value || null)}
+          onChange={(e) => handleSearchChange(e.target.value)}
           className="w-64"
         />
         <Select
           value={statusFilter}
-          onValueChange={(value) => setStatusFilter(value as StatusFilterValue)}
+          onValueChange={(value) => handleStatusFilterChange(value as StatusFilterValue)}
         >
           <SelectTrigger className="w-44">
             <SelectValue placeholder="All statuses" />
@@ -191,74 +201,87 @@ export function OrdersList({ workspaceSlug }: { workspaceSlug: string }) {
         </div>
       )}
 
-      {filtered.length === 0 ? (
+      {orders.length === 0 ? (
         <EmptyState
           icon={Package}
-          title="No matching orders"
-          description="Try a different status filter or search term."
+          title={hasActiveFilters ? "No matching orders" : "No orders yet"}
+          description={
+            hasActiveFilters
+              ? "Try a different status filter or search term."
+              : "Connect Shopify to start seeing orders flow through validation, inventory, and shipment."
+          }
         />
       ) : (
-        <div className="rounded-lg border">
-          <Table>
-            <TableHeader>
-              <TableRow>
-                {canOverride && (
-                  <TableHead className="w-10">
-                    <Checkbox
-                      checked={selected.size > 0 && selected.size === filtered.length}
-                      indeterminate={selected.size > 0 && selected.size < filtered.length}
-                      onCheckedChange={toggleAll}
-                      aria-label="Select all orders"
-                    />
-                  </TableHead>
-                )}
-                <TableHead>Order</TableHead>
-                <TableHead>Customer</TableHead>
-                <TableHead>Status</TableHead>
-                <TableHead className="text-right">Total</TableHead>
-                <TableHead className="text-right">Date</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {filtered.map((order) => {
-                const { tone, label } = mapOrderStatus(order.status);
-                return (
-                  <TableRow key={order.id}>
-                    {canOverride && (
+        <>
+          <div className="rounded-lg border">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  {canOverride && (
+                    <TableHead className="w-10">
+                      <Checkbox
+                        checked={selected.size > 0 && selected.size === orders.length}
+                        indeterminate={selected.size > 0 && selected.size < orders.length}
+                        onCheckedChange={toggleAll}
+                        aria-label="Select all orders"
+                      />
+                    </TableHead>
+                  )}
+                  <TableHead>Order</TableHead>
+                  <TableHead>Customer</TableHead>
+                  <TableHead>Status</TableHead>
+                  <TableHead className="text-right">Total</TableHead>
+                  <TableHead className="text-right">Date</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {orders.map((order) => {
+                  const { tone, label } = mapOrderStatus(order.status);
+                  return (
+                    <TableRow key={order.id}>
+                      {canOverride && (
+                        <TableCell>
+                          <Checkbox
+                            checked={selected.has(order.id)}
+                            onCheckedChange={() => toggleOne(order.id)}
+                            aria-label={`Select order #${order.shopifyOrderId}`}
+                          />
+                        </TableCell>
+                      )}
                       <TableCell>
-                        <Checkbox
-                          checked={selected.has(order.id)}
-                          onCheckedChange={() => toggleOne(order.id)}
-                          aria-label={`Select order #${order.shopifyOrderId}`}
-                        />
+                        <Link
+                          href={`/${workspaceSlug}/orders/${order.id}`}
+                          className="font-medium hover:underline"
+                        >
+                          #{order.shopifyOrderId}
+                        </Link>
                       </TableCell>
-                    )}
-                    <TableCell>
-                      <Link
-                        href={`/${workspaceSlug}/orders/${order.id}`}
-                        className="font-medium hover:underline"
-                      >
-                        #{order.shopifyOrderId}
-                      </Link>
-                    </TableCell>
-                    <TableCell className="text-muted-foreground">{order.customerName ?? order.customerEmail ?? "—"}</TableCell>
-                    <TableCell>
-                      <div className="flex items-center gap-1">
-                        <StatusBadge
-                          tone={tone}
-                          label={label}
-                        />
-                        {order.status === "VALIDATION_FAILED" && <OrderValidationFailureDialog order={order} />}
-                      </div>
-                    </TableCell>
-                    <TableCell className="text-right tabular-nums">{formatMoney(order.totalAmount, order.currency)}</TableCell>
-                    <TableCell className="text-right text-muted-foreground">{new Date(order.createdAt).toLocaleDateString()}</TableCell>
-                  </TableRow>
-                );
-              })}
-            </TableBody>
-          </Table>
-        </div>
+                      <TableCell className="text-muted-foreground">{order.customerName ?? order.customerEmail ?? "—"}</TableCell>
+                      <TableCell>
+                        <div className="flex items-center gap-1">
+                          <StatusBadge
+                            tone={tone}
+                            label={label}
+                          />
+                          {order.status === "VALIDATION_FAILED" && <OrderValidationFailureDialog order={order} />}
+                        </div>
+                      </TableCell>
+                      <TableCell className="text-right tabular-nums">{formatMoney(order.totalAmount, order.currency)}</TableCell>
+                      <TableCell className="text-right text-muted-foreground">{new Date(order.createdAt).toLocaleDateString()}</TableCell>
+                    </TableRow>
+                  );
+                })}
+              </TableBody>
+            </Table>
+          </div>
+
+          <PaginationControls
+            page={page}
+            pageSize={ORDERS_PAGE_SIZE}
+            total={data.total}
+            onPageChange={setPage}
+          />
+        </>
       )}
     </div>
   );

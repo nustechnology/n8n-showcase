@@ -10,7 +10,7 @@ import { OrdersService } from './orders.service';
 describe('OrdersService', () => {
   let service: OrdersService;
   let prisma: {
-    order: { findMany: jest.Mock; findFirst: jest.Mock; update: jest.Mock };
+    order: { findMany: jest.Mock; findFirst: jest.Mock; update: jest.Mock; count: jest.Mock };
     orderEvent: { findMany: jest.Mock; create: jest.Mock };
     auditLog: { create: jest.Mock };
     $transaction: jest.Mock;
@@ -19,7 +19,7 @@ describe('OrdersService', () => {
 
   beforeEach(async () => {
     prisma = {
-      order: { findMany: jest.fn(), findFirst: jest.fn(), update: jest.fn() },
+      order: { findMany: jest.fn(), findFirst: jest.fn(), update: jest.fn(), count: jest.fn() },
       orderEvent: { findMany: jest.fn(), create: jest.fn() },
       auditLog: { create: jest.fn() },
       $transaction: jest.fn(),
@@ -39,10 +39,42 @@ describe('OrdersService', () => {
 
   it('findAll scopes to the tenant', async () => {
     prisma.order.findMany.mockResolvedValue([]);
-    await service.findAll('t_1');
+    prisma.order.count.mockResolvedValue(0);
+    await service.findAll('t_1', {});
     expect(prisma.order.findMany).toHaveBeenCalledWith(
       expect.objectContaining({ where: { tenantId: 't_1' } }),
     );
+  });
+
+  it('findAll defaults to 10 per page and returns the total count', async () => {
+    prisma.order.findMany.mockResolvedValue([]);
+    prisma.order.count.mockResolvedValue(23);
+
+    const result = await service.findAll('t_1', {});
+
+    expect(prisma.order.findMany).toHaveBeenCalledWith(expect.objectContaining({ take: 10, skip: 0 }));
+    expect(result).toEqual({ items: [], total: 23 });
+  });
+
+  it('findAll filters by status and search when provided', async () => {
+    prisma.order.findMany.mockResolvedValue([]);
+    prisma.order.count.mockResolvedValue(0);
+
+    await service.findAll('t_1', { take: 10, skip: 10, status: 'FAILED', search: 'jane' });
+
+    const expectedWhere = {
+      tenantId: 't_1',
+      status: 'FAILED',
+      OR: [
+        { shopifyOrderId: { contains: 'jane', mode: 'insensitive' } },
+        { customerName: { contains: 'jane', mode: 'insensitive' } },
+        { customerEmail: { contains: 'jane', mode: 'insensitive' } },
+      ],
+    };
+    expect(prisma.order.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({ where: expectedWhere, take: 10, skip: 10 }),
+    );
+    expect(prisma.order.count).toHaveBeenCalledWith({ where: expectedWhere });
   });
 
   it('findOne 404s when the order does not belong to this tenant', async () => {
