@@ -1,16 +1,44 @@
+# Local development full stack.
+#
+# Mirrors the production docker-compose.yml topology but stays fully local:
+# bundles its own PostgreSQL, binds host ports, and runs on a private network
+# (it does not attach to the external shared-network used on the VM).
+#
+#   docker compose -f docker-compose.local.yml up -d
+#
+# The one-shot `migrate` service applies Prisma migrations and seeds RBAC, so a
+# single `up -d` gives you a working stack. Services are reachable from the
+# host at :3000 (backend), :3001 (frontend), :5680 (n8n), and :5433 (postgres).
 services:
-  # One-shot database bootstrap: applies Prisma migrations and seeds RBAC.
-  # Exits 0 on success; backend waits for it via service_completed_successfully.
+  postgres:
+    image: postgres:16-alpine
+    container_name: n8n-showcase-local-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-n8n-showcase}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB:-postgres}
+    ports:
+      - "127.0.0.1:5433:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-n8n-showcase}"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
   migrate:
     build:
       context: .
       dockerfile: apps/backend/Dockerfile
       target: migration
-    container_name: n8n-showcase-migrate
+    container_name: n8n-showcase-local-migrate
     environment:
-      - DATABASE_URL=${DATABASE_URL:-postgresql://ecom_automation:${ECOMPG_PASSWORD}@db:5432/ecom_automation?schema=public}
-    networks:
-      - shared-network
+      - DATABASE_URL=postgresql://${POSTGRES_USER:-n8n-showcase}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-postgres}
+    depends_on:
+      postgres:
+        condition: service_healthy
     restart: "no"
 
   ecom-automation-backend:
@@ -18,20 +46,20 @@ services:
       context: .
       dockerfile: apps/backend/Dockerfile
       target: production
-    container_name: n8n-showcase-backend
+    container_name: n8n-showcase-local-backend
     restart: unless-stopped
-    expose:
-      - "3000"
+    ports:
+      - "127.0.0.1:3000:3000"
     environment:
       - NODE_ENV=production
       - PORT=3000
-      - DATABASE_URL=${DATABASE_URL:-postgresql://ecom_automation:${ECOMPG_PASSWORD}@db:5432/ecom_automation?schema=public}
+      - DATABASE_URL=postgresql://${POSTGRES_USER:-n8n-showcase}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-postgres}
       - CLERK_ISSUER=${CLERK_ISSUER}
       - CLERK_WEBHOOK_SECRET=${CLERK_WEBHOOK_SECRET}
       - CLERK_SECRET_KEY=${CLERK_SECRET_KEY}
       - CREDENTIALS_ENCRYPTION_KEY=${CREDENTIALS_ENCRYPTION_KEY}
-      - APP_BASE_URL=${APP_BASE_URL:-http://ecom-automation.nustechnology.com:5000}
-      - FRONTEND_URL=${FRONTEND_URL:-http://ecom-automation.nustechnology.com:5001}
+      - APP_BASE_URL=${APP_BASE_URL}
+      - FRONTEND_URL=${FRONTEND_URL:-http://localhost:3001}
       - N8N_INTERNAL_TOKEN=${N8N_INTERNAL_TOKEN}
       - N8N_BASE_URL=http://ecom-automation-n8n:5678
       - SHOPIFY_CLIENT_ID=${SHOPIFY_CLIENT_ID:-}
@@ -40,69 +68,54 @@ services:
       - ZOHO_CLIENT_ID=${ZOHO_CLIENT_ID:-}
       - ZOHO_CLIENT_SECRET=${ZOHO_CLIENT_SECRET:-}
     depends_on:
+      postgres:
+        condition: service_healthy
       migrate:
         condition: service_completed_successfully
-    networks:
-      - default
-      - shared-network
 
   ecom-automation-frontend:
     build:
       context: .
       dockerfile: apps/frontend/Dockerfile
       args:
-        NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://ecom-automation.nustechnology.com:5000}
+        NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://localhost:3000}
         NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY: ${NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY}
         NEXT_PUBLIC_CLERK_SIGN_IN_URL: ${NEXT_PUBLIC_CLERK_SIGN_IN_URL:-/sign-in}
         NEXT_PUBLIC_CLERK_SIGN_UP_URL: ${NEXT_PUBLIC_CLERK_SIGN_UP_URL:-/sign-up}
         NEXT_PUBLIC_CLERK_SIGN_IN_FALLBACK_REDIRECT_URL: ${NEXT_PUBLIC_CLERK_SIGN_IN_FALLBACK_REDIRECT_URL:-/}
         NEXT_PUBLIC_CLERK_SIGN_UP_FALLBACK_REDIRECT_URL: ${NEXT_PUBLIC_CLERK_SIGN_UP_FALLBACK_REDIRECT_URL:-/create-workspace}
         NEXT_PUBLIC_GEOAPIFY_API_KEY: ${NEXT_PUBLIC_GEOAPIFY_API_KEY:-}
-    container_name: n8n-showcase-frontend
+    container_name: n8n-showcase-local-frontend
     restart: unless-stopped
-    expose:
-      - "3001"
+    ports:
+      - "127.0.0.1:3001:3001"
     environment:
       - NODE_ENV=production
       - PORT=3001
       - CLERK_SECRET_KEY=${CLERK_SECRET_KEY}
     depends_on:
       - ecom-automation-backend
-    networks:
-      - default
-      - shared-network
 
   ecom-automation-n8n:
     image: docker.n8n.io/n8nio/n8n:latest
-    container_name: n8n-showcase-n8n
+    container_name: n8n-showcase-local-n8n
     restart: unless-stopped
-    expose:
-      - "5678"
+    ports:
+      - "127.0.0.1:5680:5678"
     environment:
       - N8N_ENCRYPTION_KEY=${N8N_ENCRYPTION_KEY}
       - N8N_API_KEY=${N8N_API_KEY:-}
-      - N8N_HOST=ecom-automation.nustechnology.com
-      - N8N_PROTOCOL=http
-      - N8N_PORT=5678
-      - WEBHOOK_URL=http://ecom-automation.nustechnology.com:5678/
+      - WEBHOOK_URL=http://localhost:5680/
       - GENERIC_TIMEZONE=UTC
-      - N8N_DIAGNOSTICS_ENABLED=false
     extra_hosts:
       - "host.docker.internal:host-gateway"
     volumes:
       - n8n_data:/home/node/.n8n
     depends_on:
       - ecom-automation-backend
-    networks:
-      - default
-      - shared-network
-
-networks:
-  shared-network:
-    name: shared-network
-    external: true
 
 volumes:
+  pgdata:
   n8n_data:
 
-name: n8n-showcase
+name: n8n-showcase-local

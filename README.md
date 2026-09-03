@@ -87,6 +87,14 @@ Do not commit `.env`, `.env.local`, provider tokens, Clerk secrets, or encryptio
 
 This mode runs PostgreSQL and n8n in Docker while the backend and frontend run on the host with hot reload.
 
+The root Compose file is production-oriented (no bundled PostgreSQL, no host port binds — see [Full Docker stack](#full-docker-stack-production-vm)), so for local development run a standalone PostgreSQL yourself:
+
+```bash
+docker run -d --name n8n-showcase-dev-postgres \
+  -e POSTGRES_USER=n8n-showcase -e POSTGRES_PASSWORD=<POSTGRES_PASSWORD> -e POSTGRES_DB=postgres \
+  -p 127.0.0.1:5433:5432 postgres:16-alpine
+```
+
 Use host-reachable values in `.env`:
 
 ```env
@@ -96,13 +104,10 @@ FRONTEND_URL="http://localhost:3001"
 NEXT_PUBLIC_API_URL="http://localhost:3000"
 ```
 
-Start the infrastructure, initialize the database, and launch the applications:
+Initialize the database, launch n8n, and start the applications:
 
 ```bash
-# Root Compose provides PostgreSQL on localhost:5433.
-docker compose up -d postgres
-
-# The app-specific Compose file runs n8n without pulling in the root backend service.
+# The app-specific Compose file runs n8n without pulling in any backend service.
 docker compose -f apps/n8n/docker-compose.yml up -d
 
 npm run db:generate
@@ -132,26 +137,44 @@ The backend does not expose a manual tenant-creation endpoint. Clerk webhooks pr
 
 The first Clerk organization administrator is mapped to the system `Owner` role. Later organization administrators map to `Admin`; regular organization members map to `Operator`.
 
-### Full Docker stack
+### Full Docker stack (production VM)
 
-The root Compose file builds and runs PostgreSQL, the backend, the frontend, and n8n on one network.
+> To run the same all-in-Docker stack locally — bundled PostgreSQL, host port
+> binds, private network — use [`docker-compose.local.yml`](docker-compose.local.yml):
+> `docker compose -f docker-compose.local.yml up -d` (services at
+> `:3000`/`:3001`/`:5680`/`:5433`). It runs its own `migrate` service on startup.
 
-For container-to-container connections, use service names in `.env`:
+The root Compose file builds the backend and frontend and runs them alongside n8n as containers. It is designed for the shared-VM topology used by the other deployed projects:
+
+- **No bundled PostgreSQL.** The stack reuses the shared PostgreSQL (`db`) from `~/srv/shared-services` on the external `shared-network`, with a dedicated `ecom_automation` role/database.
+- **No host port binds.** Services only `expose` their ports on the Docker network. Public traffic enters through the shared nginx (see `deploy/nginx/ecom-automation.conf`), which maps `:5000` → backend, `:5001` → frontend, `:5678` → n8n.
+- **A one-shot `migrate` service** applies Prisma migrations and seeds RBAC; the backend waits for it before starting.
+
+Every service attaches to `shared-network` (external) so nginx and the shared database can reach it. For container-to-container connections, use service names in `.env`:
 
 ```env
-DATABASE_URL="postgresql://n8n-showcase:<POSTGRES_PASSWORD>@postgres:5432/postgres"
-N8N_BASE_URL="http://n8n:5678"
-FRONTEND_URL="http://localhost:3001"
-NEXT_PUBLIC_API_URL="http://localhost:3000"
+ECOMPG_PASSWORD=<password for the shared ecom_automation db role>
+DATABASE_URL="postgresql://ecom_automation:${ECOMPG_PASSWORD}@db:5432/ecom_automation?schema=public"
+N8N_BASE_URL="http://ecom-automation-n8n:5678"
+APP_BASE_URL="http://ecom-automation.nustechnology.com:5000"
+FRONTEND_URL="http://ecom-automation.nustechnology.com:5001"
+NEXT_PUBLIC_API_URL="http://ecom-automation.nustechnology.com:5000"
 ```
 
-The Compose stack does not automatically apply Prisma migrations or seed RBAC data. Initialize PostgreSQL first using the host-reachable `localhost:5433` database URL from the local-development section, then switch `DATABASE_URL` to the Docker service URL above and start the stack:
+Provision the dedicated database role/`ecom_automation` database on the shared PostgreSQL first (see `deploy/postgres/02-ecom-automation.sql`), then start the stack. The `migrate` service runs migrations + seed automatically on startup:
 
 ```bash
 npm run docker:build
 npm run docker:up
+docker compose ps          # confirm migrate exited 0 and the rest are healthy
 npm run docker:logs
 ```
+
+Public entry points (served by shared nginx):
+
+- Frontend: [http://ecom-automation.nustechnology.com:5001](http://ecom-automation.nustechnology.com:5001)
+- Backend health check: [http://ecom-automation.nustechnology.com:5000/health](http://ecom-automation.nustechnology.com:5000/health)
+- n8n: [http://ecom-automation.nustechnology.com:5678](http://ecom-automation.nustechnology.com:5678)
 
 Stop the complete stack with:
 
@@ -167,9 +190,7 @@ All checked-in configuration keys are documented in `.env.example`. Docker Compo
 
 | Variable | Used by | Purpose |
 | --- | --- | --- |
-| `POSTGRES_USER` | PostgreSQL | Compose database role; defaults to `n8n-showcase` |
-| `POSTGRES_PASSWORD` | PostgreSQL | Database password; must be set |
-| `POSTGRES_DB` | PostgreSQL | Database name; defaults to `postgres` |
+| `ECOMPG_PASSWORD` | Backend, migrate | Password for the shared `ecom_automation` PostgreSQL role |
 | `DATABASE_URL` | Backend, Prisma | PostgreSQL connection string; hostname differs between host and Docker modes |
 | `CLERK_ISSUER` | Backend | Clerk issuer used to discover JWKS and verify session tokens |
 | `CLERK_SECRET_KEY` | Backend, frontend | Clerk server-side API key |
@@ -370,7 +391,7 @@ The exported JSON files under `apps/n8n/workflows/` are the source of truth. Bot
 4. Confirm that both Webhook nodes and all HTTP Request nodes use the `Backend Internal Token` credential.
 5. Set backend URLs in the HTTP Request nodes for the selected runtime:
    - Hybrid development: `http://host.docker.internal:3000`
-   - Full root Compose stack: `http://backend:3000`
+   - Full root Compose stack: `http://ecom-automation-backend:3000`
 6. In the current `order-validation.json` export, change the `Notify Email` node path from `/internal/integrations/resend/send-email` to the backend's current generic route, `/internal/integrations/mailer/send-email`.
 7. Activate the workflows so their production webhook URLs exist:
    - `POST /webhook/order-received`
@@ -379,7 +400,7 @@ The exported JSON files under `apps/n8n/workflows/` are the source of truth. Bot
 The backend must use the matching n8n address:
 
 - Hybrid development: `N8N_BASE_URL=http://localhost:5680`
-- Full Compose stack: `N8N_BASE_URL=http://n8n:5678`
+- Full Compose stack: `N8N_BASE_URL=http://ecom-automation-n8n:5678`
 
 When a workflow changes in the n8n UI, export it through the workflow menu and overwrite its JSON file under `apps/n8n/workflows/`. Treat the live n8n copy as an editor, not the repository source of truth.
 
@@ -387,28 +408,31 @@ When a workflow changes in the n8n UI, export it through the workflow menu and o
 
 ## Runtime topology and ports
 
-| Host port | Container port | Service | Purpose |
+In the production VM, the three app containers expose their ports only on the Docker network; the shared nginx binds the public host ports and proxies to them:
+
+| Public host port | Container port | Service | Purpose |
 | --- | --- | --- | --- |
-| `3000` | `3000` | NestJS backend | REST API, webhooks, internal API, and SSE |
-| `3001` | `3001` | Next.js frontend | Tenant dashboard and onboarding |
-| `5680` | `5678` | n8n | Workflow editor and webhook triggers |
-| `5433` | `5432` | PostgreSQL | Durable tenant, order, workflow, and audit data |
+| `5000` | `3000` | `ecom-automation-backend` | REST API, webhooks, internal API, and SSE |
+| `5001` | `3001` | `ecom-automation-frontend` | Tenant dashboard and onboarding |
+| `5678` | `5678` | `ecom-automation-n8n` | Workflow editor and webhook triggers |
+
+The database is not part of this stack — it is the shared PostgreSQL from `~/srv/shared-services` (`db`), reused across every deployed project.
 
 Docker networking uses service names instead of host ports:
 
 | Caller | Target URL |
 | --- | --- |
-| Backend container | `http://n8n:5678` |
-| n8n container | `http://backend:3000` |
-| Backend container | `postgres:5432` through `DATABASE_URL` |
-| Browser | `http://localhost:3000` and `http://localhost:3001` |
+| Backend container | `http://ecom-automation-n8n:5678` |
+| n8n container | `http://ecom-automation-backend:3000` |
+| Backend container | `db:5432` through `DATABASE_URL` |
+| Browser | `http://ecom-automation.nustechnology.com:5000` and `:5001` (via shared nginx) |
 
 Quick checks:
 
 ```bash
-curl http://localhost:3000/health
+curl http://ecom-automation.nustechnology.com:5000/health
 docker compose ps
-docker compose logs backend n8n postgres
+docker compose logs ecom-automation-backend ecom-automation-n8n
 ```
 
 ---
@@ -612,8 +636,8 @@ openssl rand -base64 32
 
 Use the hostname for the process making the connection:
 
-- Host npm/Prisma process: `localhost:5433`
-- Backend container: `postgres:5432`
+- Host npm/Prisma process (local dev): `localhost:5433`
+- Backend container (production VM): `db:5432` (the shared PostgreSQL service name)
 
 Then regenerate and migrate:
 
@@ -646,23 +670,22 @@ Check all of the following:
 
 - the workflow is imported and active;
 - its Webhook node uses Header Auth;
-- `N8N_BASE_URL` is `http://localhost:5680` from a host backend or `http://n8n:5678` from the backend container; and
+- `N8N_BASE_URL` is `http://localhost:5680` from a host backend or `http://ecom-automation-n8n:5678` from the backend container; and
 - the n8n credential and backend use the same `N8N_INTERNAL_TOKEN`.
 
 ### n8n cannot call the backend
 
-Use `http://host.docker.internal:3000` when NestJS runs on the host, or `http://backend:3000` when both services run in the root Compose stack. `localhost:3000` inside the n8n container points back to the n8n container, not to NestJS.
+Use `http://host.docker.internal:3000` when NestJS runs on the host, or `http://ecom-automation-backend:3000` when both services run in the root Compose stack. `localhost:3000` inside the n8n container points back to the n8n container, not to NestJS.
 
 ### A port is already in use
 
-The root Compose stack binds only to the loopback interface:
+In the production VM the app containers bind **no host ports** — they only `expose` ports on the Docker network, so they never collide with other projects (roomscan on `:4000`, folio on `:3000`). Public host ports are owned by the shared nginx in `~/srv/shared-services`:
 
-- backend `127.0.0.1:3000`;
-- frontend `127.0.0.1:3001`;
-- n8n `127.0.0.1:5680`; and
-- PostgreSQL `127.0.0.1:5433`.
+- `5000`, `5001`, `5678` (this project's nginx `server` blocks).
 
-Stop the conflicting local process or change the corresponding host-side port in `docker-compose.yml`.
+If a public port is already in use, change the matching `ports:` entry in `~/srv/shared-services/docker-compose.yml` and the `listen` directive in `deploy/nginx/ecom-automation.conf`, then restart nginx.
+
+For host-based local development, the old standalone stack bound `127.0.0.1:3000`/`3001`/`5680`/`5433`; stop the conflicting local process or change the corresponding host-side port there.
 
 ---
 

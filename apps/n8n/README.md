@@ -31,8 +31,8 @@ Open `http://localhost:5680`, complete the owner signup screen, then:
 3. Import the workflow:
    - Go to **Import** → **File** and select
      `workflows/order-validation.json`
-   - Update all HTTP Request node URLs to `http://backend:3000/...`
-     (the backend's Docker Compose service name)
+    - Update all HTTP Request node URLs to `http://ecom-automation-backend:3000/...`
+      (the backend's Docker Compose service name)
 4. Build the workflow against the contract below. Export it via the n8n UI
    (three-dot menu → Download) into `workflows/`, and commit it. Re-export
    after every change made in the n8n UI — the exported JSON is the source
@@ -60,16 +60,17 @@ HTTP Request nodes call back into the backend for everything else.
 
 All three apps run in the same Docker Compose network:
 
-- Backend → `http://backend:3000`
-- Frontend → `http://frontend:3001`
-- n8n → `http://n8n:5678`
+- Backend → `http://ecom-automation-backend:3000`
+- Frontend → `http://ecom-automation-frontend:3001`
+- n8n → `http://ecom-automation-n8n:5678`
 
-Update all HTTP Request nodes in the workflow to use `http://backend:3000`
-as the base URL instead of `host.docker.internal` (the old approach when
-the backend ran as a host process). Verify connectivity:
+Update all HTTP Request nodes in the workflow to use
+`http://ecom-automation-backend:3000` as the base URL instead of
+`host.docker.internal` (the old approach when the backend ran as a host
+process). Verify connectivity:
 
 ```bash
-docker exec n8n-showcase-n8n wget -qO- http://backend:3000/health
+docker exec n8n-showcase-n8n wget -qO- http://ecom-automation-backend:3000/health
 ```
 
 ## Workflow pipeline

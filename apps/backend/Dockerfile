@@ -25,7 +25,17 @@ ENV DATABASE_URL=postgresql://placeholder:placeholder@localhost:5432/postgres
 
 RUN npx turbo prisma:generate --filter=@n8n-showcase/backend
 RUN npx turbo build --filter=@n8n-showcase/backend
-RUN npm prune --production
+
+# One-shot database bootstrap: applies committed Prisma migrations, then seeds
+# the RBAC catalog. Runs from the builder stage so the prisma CLI and
+# typescript (both devDependencies) are available. DATABASE_URL is provided at
+# runtime and wins over the placeholder set above; the seed script's dotenv
+# call never overrides an existing process env var.
+FROM builder AS migration
+
+ENV NODE_ENV=production
+
+CMD ["sh", "-c", "cd apps/backend && npx prisma migrate deploy && npm run prisma:seed"]
 
 FROM node:22-alpine AS production
 
@@ -41,6 +51,8 @@ COPY --from=builder --chown=nestjs:nodejs /app/packages/shared-schemas/package.j
 COPY --from=builder --chown=nestjs:nodejs /app/apps/backend/dist ./apps/backend/dist
 COPY --from=builder --chown=nestjs:nodejs /app/apps/backend/prisma ./apps/backend/prisma
 COPY --from=builder --chown=nestjs:nodejs /app/apps/backend/package.json ./apps/backend/
+
+RUN npm prune --production
 
 ENV NODE_ENV=production
 EXPOSE 3000
