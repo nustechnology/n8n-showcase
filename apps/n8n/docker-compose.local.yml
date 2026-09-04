@@ -9,13 +9,6 @@ services:
       - N8N_ENCRYPTION_KEY=${N8N_ENCRYPTION_KEY}
       - WEBHOOK_URL=http://localhost:5680/
       - GENERIC_TIMEZONE=UTC
-      - N8N_HOST=ecom-automation.nustechnology.com
-      - N8N_PORT=5678
-      - N8N_PROTOCOL=https
-      - N8N_PATH=/n8n/
-      - N8N_EDITOR_BASE_URL=https://ecom-automation.nustechnology.com/n8n/
-      - N8N_WEBHOOK_URL=https://ecom-automation.nustechnology.com/n8n/
-      - N8N_PROXY_HOPS=2
     # n8n's HTTP Request nodes call back into the backend, which runs as a
     # plain host process (not another container in this compose file) — from
     # inside this container, "localhost" means the container itself, not the

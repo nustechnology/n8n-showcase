@@ -21,19 +21,20 @@ services:
     container_name: n8n-showcase-backend
     restart: unless-stopped
     expose:
-      - "3000"
+      - "5001"
     environment:
       - NODE_ENV=production
-      - PORT=3000
+      - PORT=5001
+      - HOSTNAME=0.0.0.0
       - DATABASE_URL=${DATABASE_URL:-postgresql://ecom_automation:${ECOMPG_PASSWORD}@db:5432/ecom_automation?schema=public}
       - CLERK_ISSUER=${CLERK_ISSUER}
       - CLERK_WEBHOOK_SECRET=${CLERK_WEBHOOK_SECRET}
       - CLERK_SECRET_KEY=${CLERK_SECRET_KEY}
       - CREDENTIALS_ENCRYPTION_KEY=${CREDENTIALS_ENCRYPTION_KEY}
-      - APP_BASE_URL=${APP_BASE_URL:-http://ecom-automation.nustechnology.com:5000}
-      - FRONTEND_URL=${FRONTEND_URL:-http://ecom-automation.nustechnology.com:5001}
+      - APP_BASE_URL=${APP_BASE_URL:-http://ecom-automation-backend}
+      - FRONTEND_URL=${FRONTEND_URL:-http://ecom-automation-frontend}
       - N8N_INTERNAL_TOKEN=${N8N_INTERNAL_TOKEN}
-      - N8N_BASE_URL=http://ecom-automation-n8n:5678
+      - N8N_BASE_URL=https://ecom-automation.nustechnology.com/n8n/
       - SHOPIFY_CLIENT_ID=${SHOPIFY_CLIENT_ID:-}
       - SHOPIFY_CLIENT_SECRET=${SHOPIFY_CLIENT_SECRET:-}
       - SHOPIFY_SCOPES=${SHOPIFY_SCOPES:-read_orders}
@@ -51,7 +52,7 @@ services:
       context: .
       dockerfile: apps/frontend/Dockerfile
       args:
-        NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://ecom-automation.nustechnology.com:5000}
+        NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://ecom-automation-backend}
         NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY: ${NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY}
         NEXT_PUBLIC_CLERK_SIGN_IN_URL: ${NEXT_PUBLIC_CLERK_SIGN_IN_URL:-/sign-in}
         NEXT_PUBLIC_CLERK_SIGN_UP_URL: ${NEXT_PUBLIC_CLERK_SIGN_UP_URL:-/sign-up}
@@ -61,10 +62,11 @@ services:
     container_name: n8n-showcase-frontend
     restart: unless-stopped
     expose:
-      - "3001"
+      - "5000"
     environment:
       - NODE_ENV=production
-      - PORT=3001
+      - PORT=5000
+      - HOSTNAME=0.0.0.0
       - CLERK_SECRET_KEY=${CLERK_SECRET_KEY}
     depends_on:
       - ecom-automation-backend
@@ -82,11 +84,16 @@ services:
       - N8N_ENCRYPTION_KEY=${N8N_ENCRYPTION_KEY}
       - N8N_API_KEY=${N8N_API_KEY:-}
       - N8N_HOST=ecom-automation.nustechnology.com
-      - N8N_PROTOCOL=http
+      - N8N_PROTOCOL=https
       - N8N_PORT=5678
-      - WEBHOOK_URL=http://ecom-automation.nustechnology.com:5678/
+      - HOSTNAME=0.0.0.0
+      - WEBHOOK_URL=https://ecom-automation.nustechnology.com/n8n/
       - GENERIC_TIMEZONE=UTC
       - N8N_DIAGNOSTICS_ENABLED=false
+      - N8N_PATH=/n8n/
+      - N8N_EDITOR_BASE_URL=https://ecom-automation.nustechnology.com/n8n/
+      - N8N_WEBHOOK_URL=https://ecom-automation.nustechnology.com/n8n/
+      - N8N_PROXY_HOPS=2
     extra_hosts:
       - "host.docker.internal:host-gateway"
     volumes:
