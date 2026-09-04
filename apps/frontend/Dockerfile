@@ -20,6 +20,7 @@ COPY apps/frontend/postcss.config.mjs apps/frontend/
 COPY apps/frontend/eslint.config.mjs apps/frontend/
 COPY apps/frontend/public/ apps/frontend/public/
 COPY apps/frontend/app/ apps/frontend/app/
+COPY apps/frontend/proxy.ts apps/frontend/proxy.ts
 COPY apps/frontend/components/ apps/frontend/components/
 COPY apps/frontend/features/ apps/frontend/features/
 COPY apps/frontend/hooks/ apps/frontend/hooks/
